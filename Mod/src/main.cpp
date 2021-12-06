@@ -26,6 +26,13 @@ Logger& getLogger() {
 }
 
 // Hooks
+MAKE_HOOK_MATCH(ControllerLateUpdate, &VRUIControls::VRPointer::LateUpdate, void, VRUIControls::VRPointer* self) {
+    ControllerLateUpdate(self);
+    // should include ui
+    auto hoveredObject = self->pointerData->pointerCurrentRaycast->get_gameObject();
+    auto methods = GetMethods(hoveredObject);
+    LOG_INFO("num methods: %lu", methods.size());
+}
 
 extern "C" void setup(ModInfo& info) {
     info.id = ID;
@@ -45,6 +52,6 @@ extern "C" void load() {
 
     LoggerContextObject logger = getLogger().WithContext("load");
     // Install hooks
-
+    INSTALL_HOOK(logger, ControllerLateUpdate);
     getLogger().info("Installed all hooks!");
 }
