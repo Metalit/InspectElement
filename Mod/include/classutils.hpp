@@ -3,7 +3,15 @@
 #include "beatsaber-hook/shared/utils/il2cpp-utils.hpp"
 
 namespace ClassUtils {
-    std::vector<il2cpp_utils::MethodInfo*> getMethods(il2cpp_utils::Il2CppObject* obj);
+    std::vector<FieldInfo*> getFields(Il2CppClass* klass);
+
+    std::vector<PropertyInfo*> getProperties(Il2CppClass* klass);
+
+    std::vector<MethodInfo*> getMethods(Il2CppClass* klass);
+
+    std::vector<Il2CppClass*> getInterfaces(Il2CppClass* klass);
+
+    Il2CppClass* getParent(Il2CppClass* klass);
 }
 
-#define GetMethods(obj) ClassUtils::getMethods(reinterpret_cast<il2cpp_utils::Il2CppObject*>(obj))
+#define classofinst(instance) il2cpp_functions::object_get_class(instance)

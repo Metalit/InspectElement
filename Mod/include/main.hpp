@@ -12,6 +12,8 @@ Logger& getLogger();
 #define STR(string) to_utf8(csstrtostr(string))
 #define CSTR(string) il2cpp_utils::newcsstr(string)
 
+std::string GetDataPath();
+
 #include "HMUI/ViewController.hpp"
 
 void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling);

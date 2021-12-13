@@ -1,4 +1,5 @@
 #include "main.hpp"
+#include "objectdump.hpp"
 #include "classutils.hpp"
 
 #include "beatsaber-hook/shared/utils/il2cpp-utils.hpp"
@@ -10,10 +11,16 @@
 #include "custom-types/shared/register.hpp"
 
 #include "VRUIControls/VRPointer.hpp"
+#include "GlobalNamespace/OVRInput_Button.hpp"
+
 #include "UnityEngine/EventSystems/PointerEventData.hpp"
 #include "UnityEngine/EventSystems/RaycastResult.hpp"
 
 #include "UnityEngine/GameObject.hpp"
+
+#include "GlobalNamespace/MainMenuViewController.hpp"
+
+#include <filesystem>
 
 using namespace GlobalNamespace;
 
@@ -25,19 +32,44 @@ Logger& getLogger() {
     return *logger;
 }
 
+std::string GetDataPath() {
+    static std::string s(getDataDir(modInfo));
+    return s;
+}
+
 // Hooks
 MAKE_HOOK_MATCH(ControllerLateUpdate, &VRUIControls::VRPointer::LateUpdate, void, VRUIControls::VRPointer* self) {
     ControllerLateUpdate(self);
-    // should include ui
-    auto hoveredObject = self->pointerData->pointerCurrentRaycast->get_gameObject();
-    auto methods = GetMethods(hoveredObject);
-    LOG_INFO("num methods: %lu", methods.size());
+    // check for button
+    bool lbut = OVRInput::GetDown(getModConfig().Button.GetValue(), OVRInput::Controller::LTouch);
+    bool rbut = OVRInput::GetDown(getModConfig().Button.GetValue(), OVRInput::Controller::RTouch);
+    bool isRight = self->_get__lastControllerUsedWasRight();
+    if((lbut && !isRight) || (rbut && isRight)) {
+        // should include ui
+        auto hoveredObject = self->pointerData->pointerCurrentRaycast.get_gameObject();
+        auto methods = ClassUtils::getMethods(OBJ(hoveredObject));
+        LOG_INFO("num methods: %lu", methods.size());
+    }
+}
+
+bool doneItYet = false;
+MAKE_HOOK_MATCH(MenuActivate, &MainMenuViewController::DidActivate,
+        void, MainMenuViewController* self, bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling) {
+    MenuActivate(self, firstActivation, addedToHierarchy, screenSystemEnabling);
+    if(!doneItYet) {
+        logHierarchy(GetDataPath() + "MainMenu.txt");
+        doneItYet = true;
+    }
 }
 
 extern "C" void setup(ModInfo& info) {
     info.id = ID;
     info.version = VERSION;
     modInfo = info;
+    
+    auto dataPath = GetDataPath();
+    if(!direxists(dataPath))
+        mkpath(dataPath);
 	
     getLogger().info("Completed setup!");
 }
@@ -52,6 +84,7 @@ extern "C" void load() {
 
     LoggerContextObject logger = getLogger().WithContext("load");
     // Install hooks
-    INSTALL_HOOK(logger, ControllerLateUpdate);
+    // INSTALL_HOOK(logger, ControllerLateUpdate);
+    INSTALL_HOOK(logger, MenuActivate);
     getLogger().info("Installed all hooks!");
 }
