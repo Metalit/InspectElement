@@ -10,6 +10,6 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
         self->get_gameObject()->AddComponent<HMUI::Touchable*>();
         UnityEngine::GameObject* container = BeatSaberUI::CreateScrollableSettingsContainer(self->get_transform());
         
-        AddConfigValueIncrementInt(container->get_transform(), getModConfig().Button, 1, 0, 3);
+        AddConfigValueIncrementInt(container->get_transform(), getModConfig().Button, 1, 1, 3);
     }
 }
