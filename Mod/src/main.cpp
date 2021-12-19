@@ -1,6 +1,7 @@
 #include "main.hpp"
 #include "objectdump.hpp"
 #include "classutils.hpp"
+#include "manager.hpp"
 
 #include "beatsaber-hook/shared/utils/il2cpp-utils.hpp"
 #include "beatsaber-hook/shared/utils/utils.h"
@@ -47,19 +48,16 @@ MAKE_HOOK_MATCH(ControllerLateUpdate, &VRUIControls::VRPointer::LateUpdate, void
     if((lbut && !isRight) || (rbut && isRight)) {
         // should include ui
         auto hoveredObject = self->pointerData->pointerCurrentRaycast.get_gameObject();
-        auto methods = ClassUtils::getMethods(OBJ(hoveredObject));
+        auto methods = ClassUtils::getMethods(classofinst(hoveredObject));
         LOG_INFO("num methods: %lu", methods.size());
     }
 }
 
-bool doneItYet = false;
 MAKE_HOOK_MATCH(MenuActivate, &MainMenuViewController::DidActivate,
         void, MainMenuViewController* self, bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling) {
     MenuActivate(self, firstActivation, addedToHierarchy, screenSystemEnabling);
-    if(!doneItYet) {
-        logHierarchy(GetDataPath() + "MainMenu.txt");
-        doneItYet = true;
-    }
+    Manager::Instance = new Manager();
+    Manager::Instance->Init();
 }
 
 extern "C" void setup(ModInfo& info) {
@@ -84,7 +82,7 @@ extern "C" void load() {
 
     LoggerContextObject logger = getLogger().WithContext("load");
     // Install hooks
-    // INSTALL_HOOK(logger, ControllerLateUpdate);
+    INSTALL_HOOK(logger, ControllerLateUpdate);
     INSTALL_HOOK(logger, MenuActivate);
     getLogger().info("Installed all hooks!");
 }

@@ -4,5 +4,5 @@
 $ArchiveName = "Inspect Element.qmod"
 $TempArchiveName = "Inspect Element.qmod.zip"
 
-Compress-Archive -Path "./libs/arm64-v8a/libInspectElement.so", ".\extern\libbeatsaber-hook_2_3_2.so", ".\mod.json" -DestinationPath $TempArchiveName -Force
+Compress-Archive -Path "./libs/arm64-v8a/libInspectElement.so", ".\extern\libbeatsaber-hook_2_3_2.so", ".\extern\libsocket_lib.so", ".\mod.json" -DestinationPath $TempArchiveName -Force
 Move-Item $TempArchiveName $ArchiveName -Force

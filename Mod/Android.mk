@@ -50,6 +50,12 @@ LOCAL_MODULE := custom-types
 LOCAL_EXPORT_C_INCLUDES := extern/custom-types
 LOCAL_SRC_FILES := extern/libcustom-types.so
 include $(PREBUILT_SHARED_LIBRARY)
+# Creating prebuilt for dependency: socket_lib - version: 0.3.0
+include $(CLEAR_VARS)
+LOCAL_MODULE := socket_lib
+LOCAL_EXPORT_C_INCLUDES := extern/socket_lib
+LOCAL_SRC_FILES := extern/libsocket_lib.so
+include $(PREBUILT_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := InspectElement
@@ -61,6 +67,7 @@ LOCAL_SHARED_LIBRARIES += beatsaber-hook_2_3_2
 LOCAL_SHARED_LIBRARIES += codegen
 LOCAL_SHARED_LIBRARIES += questui
 LOCAL_SHARED_LIBRARIES += custom-types
+LOCAL_SHARED_LIBRARIES += socket_lib
 LOCAL_LDLIBS += -llog
 LOCAL_CFLAGS += -I'extern/libil2cpp/il2cpp/libil2cpp' -DID='"InspectElement"' -DVERSION='"0.1.0"' -I'./shared' -I'./extern' -isystem'extern/codegen/include'
 LOCAL_CPPFLAGS += -std=c++2a
