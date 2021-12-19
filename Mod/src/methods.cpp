@@ -7,22 +7,41 @@ bool isSimpleType(Il2CppTypeEnum type) {
     return (type >= IL2CPP_TYPE_BOOLEAN) && (type <= IL2CPP_TYPE_STRING);
 }
 
+#define CASE(il2cpptypename, ret) case IL2CPP_TYPE_##il2cpptypename: return ret;
+#define BASIC_CASE(il2cpptypename) CASE(il2cpptypename, #il2cpptypename)
 std::string typeName(Il2CppTypeEnum type) {
     switch (type) {
-        case IL2CPP_TYPE_BOOLEAN: return "bool";
-        case IL2CPP_TYPE_CHAR: return "char";
-        case IL2CPP_TYPE_I1: return "int8";
-        case IL2CPP_TYPE_U1: return "uint8";
-        case IL2CPP_TYPE_I2: return "int16";
-        case IL2CPP_TYPE_U2: return "uint16";
-        case IL2CPP_TYPE_I4: return "int32";
-        case IL2CPP_TYPE_U4: return "uint32";
-        case IL2CPP_TYPE_I8: return "int64";
-        case IL2CPP_TYPE_U8: return "uint64";
-        case IL2CPP_TYPE_R4: return "float";
-        case IL2CPP_TYPE_R8: return "double";
-        case IL2CPP_TYPE_STRING: return "string";
-        default: return "Il2CppObject";
+        BASIC_CASE(END)
+        BASIC_CASE(BYREF)
+        BASIC_CASE(VALUETYPE)
+        BASIC_CASE(VAR)
+        BASIC_CASE(GENERICINST)
+        BASIC_CASE(TYPEDBYREF)
+        BASIC_CASE(I)
+        BASIC_CASE(U)
+        BASIC_CASE(FNPTR)
+        BASIC_CASE(OBJECT)
+        BASIC_CASE(MVAR)
+        BASIC_CASE(INTERNAL)
+        CASE(VOID, "void")
+        CASE(BOOLEAN, "bool")
+        CASE(CHAR, "char")
+        CASE(I1, "int8")
+        CASE(U1, "uint8")
+        CASE(I2, "int16")
+        CASE(U2, "uint16")
+        CASE(I4, "int32")
+        CASE(U4, "uint32")
+        CASE(I8, "int64")
+        CASE(U8, "uint64")
+        CASE(R4, "float")
+        CASE(R8, "double")
+        CASE(STRING, "string")
+        CASE(PTR, "pointer")
+        CASE(CLASS, "class")
+        CASE(ARRAY, "array (unbounded)")
+        CASE(SZARRAY, "array (bounded)")
+        default: return "Il2CppObject " + std::to_string(type);
     }
 }
 
@@ -119,6 +138,7 @@ Method::Method(Il2CppObject* obj, MethodInfo* m) {
         hasNonSimpleParam = hasNonSimpleParam || !isSimpleType(param.parameter_type->type);
     }
     returnType = method->return_type->type;
+    retNonSimple = !isSimpleType(returnType);
     name = method->name;
 }
 
@@ -132,6 +152,7 @@ Method::Method(Il2CppObject* obj, FieldInfo* f, bool s) {
     paramNames.emplace_back(field->name);
     hasNonSimpleParam = !isSimpleType(type);
     returnType = set ? IL2CPP_TYPE_VOID : type;
+    retNonSimple = !isSimpleType(returnType);
     name = field->name;
 }
 
@@ -151,12 +172,12 @@ Il2CppObject* Method::run(std::vector<std::string> args, std::string* valueRes) 
         auto ret = il2cpp_functions::runtime_invoke(method, object, params, &ex);
         // catch exceptions
         if(ex) {
-            LOG_INFO("%s: Failed with exception: %s", il2cpp_functions::method_get_name(method),
-                il2cpp_utils::ExceptionToString(ex).c_str());
+            LOG_INFO("%s: Failed with exception: %s", name.c_str(), il2cpp_utils::ExceptionToString(ex).c_str());
             return nullptr;
         }
         // check if ret is a value type (mostly copied from bs-hook)
-        if(il2cpp_functions::class_is_valuetype(il2cpp_functions::object_get_class(ret))) {
+        // if(il2cpp_functions::class_is_valuetype(il2cpp_functions::object_get_class(ret))) {
+        if(!retNonSimple) {
             *valueRes = toString(returnType, ret);
             il2cpp_functions::GC_free(ret);
             return nullptr;
@@ -169,7 +190,7 @@ Il2CppObject* Method::run(std::vector<std::string> args, std::string* valueRes) 
             return nullptr;
         } else {
             // assumes simple field type
-            if(!isSimpleType(returnType)) return nullptr;
+            if(retNonSimple) return nullptr;
             void* result = toMethodArg(returnType, "");
             il2cpp_functions::field_get_value(object, field, result);
             *valueRes = toString(returnType, result);
@@ -183,7 +204,7 @@ std::string Method::infoString() {
     CRASH_UNLESS(paramNames.size() == paramTypes.size());
     std::stringstream ss;
     if(method) {
-        ss << "Method: " << typeName(returnType) << " " << name << "(";
+        ss << "M: " << typeName(returnType) << " " << name << "(";
         bool first = true;
         for(int i = 0; i < paramNames.size(); i++) {
             if(!first)
@@ -195,7 +216,7 @@ std::string Method::infoString() {
         ss << ")\n";
         return ss.str();
     } else if(field) {
-        ss << "Field: " << typeName(returnType) << " " << name;
+        ss << "F: " << typeName(returnType) << " " << name;
         if(set)
             ss << " (set)\n";
         else

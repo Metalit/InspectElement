@@ -10,7 +10,7 @@ class Manager {
 
     SocketLib::ServerSocket* serverSocket;
     SocketLib::Channel* client;
-    bool initialized;
+    bool initialized, connected;
 
     Il2CppObject* object;
     std::vector<Method> methods;

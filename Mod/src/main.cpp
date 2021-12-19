@@ -48,7 +48,6 @@ MAKE_HOOK_MATCH(ControllerLateUpdate, &VRUIControls::VRPointer::LateUpdate, void
     bool rbut = OVRInput::GetDown(getModConfig().Button.GetValue(), OVRInput::Controller::RTouch);
     bool isRight = self->_get__lastControllerUsedWasRight();
     if((lbut && !isRight) || (rbut && isRight)) {
-        LOG_INFO("Setting object");
         // should include ui
         auto hoveredObject = self->pointerData->pointerCurrentRaycast.get_gameObject();
         Manager::Instance->SetObject(hoveredObject);
@@ -58,8 +57,10 @@ MAKE_HOOK_MATCH(ControllerLateUpdate, &VRUIControls::VRPointer::LateUpdate, void
 MAKE_HOOK_MATCH(MenuActivate, &MainMenuViewController::DidActivate,
         void, MainMenuViewController* self, bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling) {
     MenuActivate(self, firstActivation, addedToHierarchy, screenSystemEnabling);
-    Manager::Instance = new Manager();
-    Manager::Instance->Init();
+    if(firstActivation && !Manager::Instance) {
+        Manager::Instance = new Manager();
+        Manager::Instance->Init();
+    }
 }
 
 extern "C" void setup(ModInfo& info) {

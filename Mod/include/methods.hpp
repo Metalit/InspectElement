@@ -6,7 +6,8 @@ class Method {
     public:
     Il2CppTypeEnum returnType;
     std::vector<Il2CppTypeEnum> paramTypes;
-    bool hasNonSimpleParam;
+    bool retNonSimple = false;
+    bool hasNonSimpleParam = false;
 
     std::string name;
     std::vector<std::string> paramNames;

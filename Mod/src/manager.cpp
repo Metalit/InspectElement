@@ -31,7 +31,7 @@ void Manager::Init() {
 }
 
 void Manager::SetObject(Il2CppObject* obj) {
-    if(!client) return;
+    if(!connected) return;
 
     object = obj;
     methods.clear();
@@ -42,19 +42,32 @@ void Manager::SetObject(Il2CppObject* obj) {
     for(auto& methodInfo : methodInfos) {
         // would rather emplace the whole object, but then it might have to be removed
         auto method = Method(object, methodInfo);
-        // if(!method.hasNonSimpleParam)
+        if(!method.hasNonSimpleParam)
             methods.emplace_back(method);
     }
     // todo: fields
 
-    // send info
-    for(auto& method : methods) {
-        client->queueWrite(Message(method.infoString()));
+    // just one parent for now
+    auto parent = getParent(klass);
+    if(parent) {
+        auto methodInfos = getMethods(parent);
+        for(auto& methodInfo : methodInfos) {
+            auto method = Method(object, methodInfo);
+            if(!method.hasNonSimpleParam)
+                methods.emplace_back(method);
+        }
     }
+
+    // send info
+    for(int i = 0; i < methods.size(); i++) {
+        client->queueWrite(Message(std::to_string(i) + " " + methods[i].infoString()));
+    }
+    LOG_INFO("Object set");
 }
 
 void Manager::connectEvent(Channel& channel, bool connected) {
     LOG_INFO("Connected %i status: %s", channel.clientDescriptor, connected ? "connected" : "disconnected");
+    this->connected = connected;
     client = &channel;
 
     if(connected)
@@ -63,9 +76,38 @@ void Manager::connectEvent(Channel& channel, bool connected) {
         client = nullptr;
 }
 
+std::vector<std::string> parse(std::string& str, std::string delimiter) {
+    std::vector<std::string> ret = {};
+    int start = 0;
+    auto end = str.find(delimiter);
+    while (end != std::string::npos) {
+        ret.emplace_back(str.substr(start, end - start));
+        start = end + delimiter.size();
+        end = str.find(delimiter, start);
+    }
+    ret.emplace_back(str.substr(start, end - start));
+    return ret;
+}
+
 void Manager::listenOnEvents(Channel& client, const Message& message) {
     auto msgStr = message.toString();
     LOG_INFO("Received: %s", msgStr.c_str());
 
-    // client.queueWrite(message);
+    auto vec = parse(msgStr, ",");
+    int idx = std::stoi(vec[0]);
+    vec.erase(vec.begin());
+    
+    if(idx < methods.size() && idx >= 0) {
+        std::string out = "";
+        auto res = methods[idx].run(vec, &out);
+        if(out.length() > 0) {
+            client.queueWrite(Message("Returned: " + out + "\n"));
+        } else if(res) {
+            client.queueWrite(Message("Returned new object\n"));
+            SetObject(res);
+        } else
+            client.queueWrite(Message("Returned\n"));
+    } else {
+        client.queueWrite(Message("Invalid method"));
+    }
 }

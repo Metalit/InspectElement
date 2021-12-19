@@ -42,9 +42,7 @@ std::vector<MethodInfo*> ClassUtils::getMethods(Il2CppClass* klass) {
     std::vector<MethodInfo*> ret;
     // double pointer because methods are stored as pointers
     MethodInfo** iter = nullptr;
-    ::getLogger().info("getting methods, iter: %p", iter);
     while(il2cpp_functions::class_get_methods(klass, (void**)(&iter))) {
-        ::getLogger().info("getting method");
         if(*iter)
             ret.push_back(*iter);
     }
@@ -60,4 +58,8 @@ std::vector<Il2CppClass*> ClassUtils::getInterfaces(Il2CppClass* klass) {
             ret.push_back(*iter);
     }
     return ret;
+}
+
+Il2CppClass* ClassUtils::getParent(Il2CppClass* klass) {
+    return il2cpp_functions::class_get_parent(klass);
 }
