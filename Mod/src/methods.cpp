@@ -7,6 +7,25 @@ bool isSimpleType(Il2CppTypeEnum type) {
     return (type >= IL2CPP_TYPE_BOOLEAN) && (type <= IL2CPP_TYPE_STRING);
 }
 
+std::string typeName(Il2CppTypeEnum type) {
+    switch (type) {
+        case IL2CPP_TYPE_BOOLEAN: return "bool";
+        case IL2CPP_TYPE_CHAR: return "char";
+        case IL2CPP_TYPE_I1: return "int8";
+        case IL2CPP_TYPE_U1: return "uint8";
+        case IL2CPP_TYPE_I2: return "int16";
+        case IL2CPP_TYPE_U2: return "uint16";
+        case IL2CPP_TYPE_I4: return "int32";
+        case IL2CPP_TYPE_U4: return "uint32";
+        case IL2CPP_TYPE_I8: return "int64";
+        case IL2CPP_TYPE_U8: return "uint64";
+        case IL2CPP_TYPE_R4: return "float";
+        case IL2CPP_TYPE_R8: return "double";
+        case IL2CPP_TYPE_STRING: return "string";
+        default: return "Il2CppObject";
+    }
+}
+
 #define ALLOC_RET(type) ret = alloca(sizeof(type)); *((type*)ret)
 #define IF_NOT_EMPTY(type, expr) arg.length() > 0 ? expr : (type)(0);
 #define INT_RET(intType) ALLOC_RET(intType) = IF_NOT_EMPTY(intType, (intType)(std::stoi(arg))); return ret
@@ -88,11 +107,13 @@ std::string toString(Il2CppTypeEnum type, void* res) {
     }
 }
 
-Method::Method(void* obj, MethodInfo* m) {
+Method::Method(Il2CppObject* obj, MethodInfo* m) {
     object = obj;
     method = m;
+    // LOG_INFO("processing method %s", method->name);
     for(decltype(method->parameters_count) i = 0; i < method->parameters_count; i++) {
         auto param = method->parameters[i];
+        // LOG_INFO("name: %s, type: %i", param.name, param.parameter_type->type);
         paramTypes.emplace_back(param.parameter_type->type);
         paramNames.emplace_back(param.name);
         hasNonSimpleParam = hasNonSimpleParam || !isSimpleType(param.parameter_type->type);
@@ -102,7 +123,7 @@ Method::Method(void* obj, MethodInfo* m) {
 }
 
 // treat fields like properties w/ get/set methods
-Method::Method(void* obj, FieldInfo* f, bool s) {
+Method::Method(Il2CppObject* obj, FieldInfo* f, bool s) {
     object = obj;
     field = f;
     set = s;
@@ -122,7 +143,7 @@ Il2CppObject* Method::run(std::vector<std::string> args, std::string* valueRes) 
         // turn each string into a parameter
         void* params[paramTypes.size()];
         for(int i = 0; i < paramTypes.size(); i++) {
-            // since toMethodArg is inline and uses alloca, all args should be cleared on return
+            // since toMethodArg is inline and uses alloca, all args should be freed on return
             params[i] = toMethodArg(paramTypes[i], args[i]);
         }
         // run the method
@@ -136,14 +157,14 @@ Il2CppObject* Method::run(std::vector<std::string> args, std::string* valueRes) 
         }
         // check if ret is a value type (mostly copied from bs-hook)
         if(il2cpp_functions::class_is_valuetype(il2cpp_functions::object_get_class(ret))) {
-            valueRes = toString(returnType, ret);
+            *valueRes = toString(returnType, ret);
             il2cpp_functions::GC_free(ret);
             return nullptr;
         }
         return ret;
     } else if(field) { // fields :barf:
         if(set) {
-            void* param = toMethodArg(paramTyeps[0], args[0]);
+            void* param = toMethodArg(paramTypes[0], args[0]);
             il2cpp_functions::field_set_value(object, field, param);
             return nullptr;
         } else {
@@ -151,9 +172,35 @@ Il2CppObject* Method::run(std::vector<std::string> args, std::string* valueRes) 
             if(!isSimpleType(returnType)) return nullptr;
             void* result = toMethodArg(returnType, "");
             il2cpp_functions::field_get_value(object, field, result);
-            valueRes = toString(result);
+            *valueRes = toString(returnType, result);
             return nullptr;
         }
     }
     return nullptr;
+}
+
+std::string Method::infoString() {
+    CRASH_UNLESS(paramNames.size() == paramTypes.size());
+    std::stringstream ss;
+    if(method) {
+        ss << "Method: " << typeName(returnType) << " " << name << "(";
+        bool first = true;
+        for(int i = 0; i < paramNames.size(); i++) {
+            if(!first)
+                ss << ", ";
+            else
+                first = false;
+            ss << typeName(paramTypes[i]) << " " << paramNames[i];
+        }
+        ss << ")\n";
+        return ss.str();
+    } else if(field) {
+        ss << "Field: " << typeName(returnType) << " " << name;
+        if(set)
+            ss << " (set)\n";
+        else
+            ss << " (get)\n";
+        return ss.str();
+    } else
+        return "";
 }

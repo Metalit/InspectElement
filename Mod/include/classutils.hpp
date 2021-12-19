@@ -5,6 +5,7 @@
 namespace ClassUtils {
     std::vector<FieldInfo*> getFields(Il2CppClass* klass);
 
+    std::vector<MethodInfo*> getPropMethods(PropertyInfo* prop);
     std::vector<PropertyInfo*> getProperties(Il2CppClass* klass);
 
     std::vector<MethodInfo*> getMethods(Il2CppClass* klass);

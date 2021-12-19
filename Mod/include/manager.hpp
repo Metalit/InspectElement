@@ -1,5 +1,6 @@
 #pragma once
 
+#include "methods.hpp"
 #include "socket_lib/shared/SocketHandler.hpp"
 
 class Manager {
@@ -9,13 +10,14 @@ class Manager {
 
     SocketLib::ServerSocket* serverSocket;
     SocketLib::Channel* client;
-    bool initialized, connected;
+    bool initialized;
 
-    std::vector<class MethodInfo*> methods;
+    Il2CppObject* object;
+    std::vector<Method> methods;
 
     public:
     void Init();
-    void SetObject(class Il2CppObject* obj);
+    void SetObject(class Il2CppObject* object);
 
     static Manager* Instance;
 };

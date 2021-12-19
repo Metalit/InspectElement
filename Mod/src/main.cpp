@@ -41,15 +41,17 @@ std::string GetDataPath() {
 // Hooks
 MAKE_HOOK_MATCH(ControllerLateUpdate, &VRUIControls::VRPointer::LateUpdate, void, VRUIControls::VRPointer* self) {
     ControllerLateUpdate(self);
+    // ensure manager exists
+    if(!Manager::Instance) return;
     // check for button
     bool lbut = OVRInput::GetDown(getModConfig().Button.GetValue(), OVRInput::Controller::LTouch);
     bool rbut = OVRInput::GetDown(getModConfig().Button.GetValue(), OVRInput::Controller::RTouch);
     bool isRight = self->_get__lastControllerUsedWasRight();
     if((lbut && !isRight) || (rbut && isRight)) {
+        LOG_INFO("Setting object");
         // should include ui
         auto hoveredObject = self->pointerData->pointerCurrentRaycast.get_gameObject();
-        auto methods = ClassUtils::getMethods(classofinst(hoveredObject));
-        LOG_INFO("num methods: %lu", methods.size());
+        Manager::Instance->SetObject(hoveredObject);
     }
 }
 

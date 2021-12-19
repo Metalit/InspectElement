@@ -1,6 +1,5 @@
 import socket
 import threading
-from sys import stdout
 
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -16,7 +15,7 @@ def receive_loop():
         receive_message(client.recv(8))
 
 def receive_message(message):
-    stdout.write(message.decode("utf-8"))
+    print(message.decode("utf-8"), end="")
 
 t1 = threading.Thread(target=input_loop)
 t2 = threading.Thread(target=receive_loop)
