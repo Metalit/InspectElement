@@ -45,19 +45,18 @@ std::string typeName(Il2CppTypeEnum type) {
     }
 }
 
-#define ALLOC_RET(type) ret = alloca(sizeof(type)); *((type*)ret)
-#define IF_NOT_EMPTY(type, expr) arg.length() > 0 ? expr : (type)(0);
-#define INT_RET(intType) ALLOC_RET(intType) = IF_NOT_EMPTY(intType, (intType)(std::stoi(arg))); return ret
-inline void* toMethodArg(Il2CppTypeEnum type, std::string arg) {
+#define ALLOC_RET(type) ret = malloc(sizeof(type)); *((type*)ret)
+#define IF_NOT_EMPTY(type, expr) arg.length() > 0 ? (expr) : (type)(0)
+#define GEN_RET(type, expr) ALLOC_RET(type) = IF_NOT_EMPTY(type, expr); return ret
+#define INT_RET(intType) GEN_RET(intType, (intType)std::stoi(arg))
+void* toMethodArg(Il2CppTypeEnum type, std::string arg) {
     void* ret = nullptr;
     switch (type) {
         case IL2CPP_TYPE_BOOLEAN:
             std::transform(arg.begin(), arg.end(), arg.begin(), tolower);
-            ALLOC_RET(bool) = IF_NOT_EMPTY(bool, arg == "true");
-            return ret;
+            GEN_RET(bool, arg == "true");
         case IL2CPP_TYPE_CHAR:
-            ALLOC_RET(char) = IF_NOT_EMPTY(char, arg.c_str()[0]);
-            return ret;
+            GEN_RET(char, arg.c_str()[0]);
         case IL2CPP_TYPE_I1:
             INT_RET(int8_t);
         case IL2CPP_TYPE_U1:
@@ -75,13 +74,11 @@ inline void* toMethodArg(Il2CppTypeEnum type, std::string arg) {
         case IL2CPP_TYPE_U8:
             INT_RET(uint64_t);
         case IL2CPP_TYPE_R4:
-            ALLOC_RET(float) = IF_NOT_EMPTY(float, (float)(std::stod(arg)));
-            return ret;
+            GEN_RET(float, (float)std::stod(arg));
         case IL2CPP_TYPE_R8:
-            ALLOC_RET(double) = IF_NOT_EMPTY(double, (double)(std::stod(arg)));
-            return ret;
+            GEN_RET(double, (double)std::stod(arg));
         case IL2CPP_TYPE_STRING:
-            return (void*)(CSTR(arg));
+            return (void*)(il2cpp_utils::newcsstr<il2cpp_utils::CreationType::Manual>(arg));
         default:
             return nullptr;
     }
@@ -90,6 +87,7 @@ inline void* toMethodArg(Il2CppTypeEnum type, std::string arg) {
 #define CAST_RES(type) *((type*)res)
 #define TO_SSTR(type) ss << CAST_RES(type); return ss.str()
 std::string toString(Il2CppTypeEnum type, void* res) {
+    if(!res) return "nullptr";
     std::stringstream ss;
     switch (type) {
         case IL2CPP_TYPE_BOOLEAN:
@@ -113,30 +111,29 @@ std::string toString(Il2CppTypeEnum type, void* res) {
         case IL2CPP_TYPE_U8:
             TO_SSTR(uint64_t);
         case IL2CPP_TYPE_R4:
-            // overdoing the precision should just print out all the precision available
-            ss << std::setprecision(1<<8) << CAST_RES(float);
+            ss << std::fixed << std::setprecision(10) << CAST_RES(float);
             return ss.str();
         case IL2CPP_TYPE_R8:
-            ss << std::setprecision(1<<8) << CAST_RES(double);
+            ss << std::fixed << std::setprecision(10) << CAST_RES(double);
             return ss.str();
         case IL2CPP_TYPE_STRING:
             return STR((Il2CppString*)res);
         default:
-            return "invalid";
+            return "invalid type";
     }
 }
 
 Method::Method(Il2CppObject* obj, MethodInfo* m) {
     object = obj;
     method = m;
-    // LOG_INFO("processing method %s", method->name);
     for(decltype(method->parameters_count) i = 0; i < method->parameters_count; i++) {
         auto param = method->parameters[i];
-        // LOG_INFO("name: %s, type: %i", param.name, param.parameter_type->type);
         paramTypes.emplace_back(param.parameter_type->type);
         paramNames.emplace_back(param.name);
         hasNonSimpleParam = hasNonSimpleParam || !isSimpleType(param.parameter_type->type);
     }
+    // not doing generic methods here
+    hasNonSimpleParam = hasNonSimpleParam || method->is_generic;
     returnType = method->return_type->type;
     retNonSimple = !isSimpleType(returnType);
     name = method->name;
@@ -150,8 +147,8 @@ Method::Method(Il2CppObject* obj, FieldInfo* f, bool s) {
     auto type = field->type->type;
     paramTypes.emplace_back(type);
     paramNames.emplace_back(field->name);
-    hasNonSimpleParam = !isSimpleType(type);
-    returnType = set ? IL2CPP_TYPE_VOID : type;
+    hasNonSimpleParam = !isSimpleType(type) && set;
+    returnType = type;//set ? IL2CPP_TYPE_VOID : type;
     retNonSimple = !isSimpleType(returnType);
     name = field->name;
 }
@@ -162,22 +159,33 @@ Il2CppObject* Method::run(std::vector<std::string> args, std::string* valueRes) 
     // regular method, uses runtime_invoke
     if(method) {
         // turn each string into a parameter
+        LOG_INFO("Getting parameters");
         void* params[paramTypes.size()];
         for(int i = 0; i < paramTypes.size(); i++) {
-            // since toMethodArg is inline and uses alloca, all args should be freed on return
+            // mallocs all params
             params[i] = toMethodArg(paramTypes[i], args[i]);
         }
         // run the method
+        LOG_INFO("Running method %s", name.c_str());
         Il2CppException* ex = nullptr;
         auto ret = il2cpp_functions::runtime_invoke(method, object, params, &ex);
+        // free params
+        for(auto& param : params) {
+            free(param);
+        }
         // catch exceptions
         if(ex) {
             LOG_INFO("%s: Failed with exception: %s", name.c_str(), il2cpp_utils::ExceptionToString(ex).c_str());
             return nullptr;
         }
+        LOG_INFO("Returning");
         // check if ret is a value type (mostly copied from bs-hook)
-        // if(il2cpp_functions::class_is_valuetype(il2cpp_functions::object_get_class(ret))) {
-        if(!retNonSimple) {
+        // il2cpp will return boxed values from methods, but not store them in fields
+        if(!retNonSimple && il2cpp_functions::class_is_valuetype(il2cpp_functions::object_get_class(ret))) {
+            *valueRes = toString(returnType, il2cpp_functions::object_unbox(ret));
+            il2cpp_functions::GC_free(ret);
+            return nullptr;
+        } else if(returnType == IL2CPP_TYPE_STRING) {
             *valueRes = toString(returnType, ret);
             il2cpp_functions::GC_free(ret);
             return nullptr;
@@ -187,6 +195,7 @@ Il2CppObject* Method::run(std::vector<std::string> args, std::string* valueRes) 
         if(set) {
             void* param = toMethodArg(paramTypes[0], args[0]);
             il2cpp_functions::field_set_value(object, field, param);
+            free(param);
             return nullptr;
         } else {
             // assumes simple field type
@@ -194,6 +203,7 @@ Il2CppObject* Method::run(std::vector<std::string> args, std::string* valueRes) 
             void* result = toMethodArg(returnType, "");
             il2cpp_functions::field_get_value(object, field, result);
             *valueRes = toString(returnType, result);
+            free(result);
             return nullptr;
         }
     }

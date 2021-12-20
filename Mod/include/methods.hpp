@@ -12,9 +12,9 @@ class Method {
     std::string name;
     std::vector<std::string> paramNames;
     
-    Il2CppObject* object;
-    MethodInfo* method;
-    FieldInfo* field;
+    Il2CppObject* object = nullptr;
+    MethodInfo* method = nullptr;
+    FieldInfo* field = nullptr;
     bool set; // set or get for field
 
     Method(Il2CppObject* obj, MethodInfo* method);

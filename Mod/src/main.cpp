@@ -64,7 +64,7 @@ MAKE_HOOK_MATCH(MenuActivate, &MainMenuViewController::DidActivate,
 }
 
 extern "C" void setup(ModInfo& info) {
-    info.id = ID;
+    info.id = MOD_ID;
     info.version = VERSION;
     modInfo = info;
     

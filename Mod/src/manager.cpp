@@ -2,6 +2,8 @@
 #include "classutils.hpp"
 #include "main.hpp"
 
+#include "questui/shared/CustomTypes/Components/MainThreadScheduler.hpp"
+
 using namespace SocketLib;
 using namespace ClassUtils;
 
@@ -37,6 +39,17 @@ void Manager::SetObject(Il2CppObject* obj) {
     methods.clear();
     
     auto klass = classofinst(object);
+
+    auto fieldInfos = getFields(klass);
+    // turn each field into fake get/set methods
+    for(auto& fieldInfo : fieldInfos) {
+        // gets should always be fine, type-wise
+        methods.emplace_back(Method(object, fieldInfo, false));
+        auto fakeMethod = Method(object, fieldInfo, true);
+        if(!fakeMethod.hasNonSimpleParam)
+            methods.emplace_back(fakeMethod);
+    }
+
     auto methodInfos = getMethods(klass);
     // convert to our method type
     for(auto& methodInfo : methodInfos) {
@@ -45,17 +58,23 @@ void Manager::SetObject(Il2CppObject* obj) {
         if(!method.hasNonSimpleParam)
             methods.emplace_back(method);
     }
-    // todo: fields
 
-    // just one parent for now
     auto parent = getParent(klass);
-    if(parent) {
+    while(parent) {
+        auto fieldInfos = getFields(parent);
+        for(auto& fieldInfo : fieldInfos) {
+            methods.emplace_back(Method(object, fieldInfo, false));
+            auto fakeMethod = Method(object, fieldInfo, true);
+            if(!fakeMethod.hasNonSimpleParam)
+                methods.emplace_back(fakeMethod);
+        }
         auto methodInfos = getMethods(parent);
         for(auto& methodInfo : methodInfos) {
             auto method = Method(object, methodInfo);
             if(!method.hasNonSimpleParam)
                 methods.emplace_back(method);
         }
+        parent = getParent(parent);
     }
 
     // send info
@@ -98,16 +117,18 @@ void Manager::listenOnEvents(Channel& client, const Message& message) {
     vec.erase(vec.begin());
     
     if(idx < methods.size() && idx >= 0) {
-        std::string out = "";
-        auto res = methods[idx].run(vec, &out);
-        if(out.length() > 0) {
-            client.queueWrite(Message("Returned: " + out + "\n"));
-        } else if(res) {
-            client.queueWrite(Message("Returned new object\n"));
-            SetObject(res);
-        } else
-            client.queueWrite(Message("Returned\n"));
+        QuestUI::MainThreadScheduler::Schedule([this, vec, idx](){
+            std::string out = "";
+            auto res = methods[idx].run(vec, &out);
+            if(out.length() > 0) {
+                this->client->queueWrite(Message("Returned: " + out + "\n"));
+            } else if(res) {
+                this->client->queueWrite(Message("Returned new object\n"));
+                SetObject(res);
+            } else
+                this->client->queueWrite(Message("Returned\n"));
+        });
     } else {
-        client.queueWrite(Message("Invalid method"));
+        this->client->queueWrite(Message("Invalid method"));
     }
 }
