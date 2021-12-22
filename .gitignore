@@ -1,3 +1,14 @@
 Mod/Inspect Element.qmod
 Mod/log_processed.txt
 Mod/log.txt
+Mod/Android.mk.backup
+Mod/extern
+Mod/libs
+Mod/ndkpath.txt
+Mod/obj
+Mod/qpm.shared.json
+Client/pyvenv.cfg
+Client/share
+Client/Scripts
+Client/Lib
+Client/Include
