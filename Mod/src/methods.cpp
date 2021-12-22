@@ -163,6 +163,11 @@ Il2CppObject* Method::run(std::vector<std::string> args, std::string* valueRes) 
     if(method) {
         // turn each string into a parameter
         LOG_INFO("Getting parameters");
+        if(args.size() != paramTypes.size()) {
+            LOG_INFO("Method and parameter mismatch");
+            return nullptr;
+        }
+
         void* params[paramTypes.size()];
         for(int i = 0; i < paramTypes.size(); i++) {
             // mallocs all params

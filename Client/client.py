@@ -4,7 +4,7 @@ import threading
 def receive_loop(receive_callback):
     while True:
         try:
-            receive_callback(client.recv(8).decode("utf-8"))
+            receive_callback(client.recv(1024).decode("utf-8"))
         except OSError:
             break
 

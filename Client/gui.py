@@ -1,5 +1,5 @@
 from os import environ
-environ["KIVY_NO_CONSOLELOG"] = "1"
+# environ["KIVY_NO_CONSOLELOG"] = "1"
 
 from client import start_client, stop_client
 
@@ -15,17 +15,32 @@ from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 
-def makeMethodCell(parent, methodTyp, methodName, argTyps, argNames):
+def makeMethodCell(parent, methodIdx, methodTyp, methodName, argTyps, argNames):
+    print("making cell")
     cell = MethodCell()
-    cell.add_widget(CompactLabel(text=methodTyp), index=len(cell.children))
-    cell.add_widget(CompactLabel(text=methodName), index=len(cell.children))
+    
+    cell.index = methodIdx
+    cell.ids.run_button.bind(on_press=cell.run)
+
+    cell.add_widget(CompactLabel(text=methodTyp))
+    cell.add_widget(CompactLabel(text=methodName))
 
     for typ, name in zip(argTyps, argNames):
-        cell.add_widget(CompactLabel(text=typ), index=len(cell.children))
-        cell.add_widget(CompactLabel(text=name), index=len(cell.children))
-        cell.add_widget(FieldInput(), index=len(cell.children))
+        cell.add_widget(CompactLabel(text=typ))
+        cell.add_widget(CompactLabel(text=name))
+        cell.add_widget(FieldInput())
 
     parent.add_widget(cell)
+
+def makeClassRegion(parent, startingIndex, className, methods):
+    region = ClassDisplay()
+    region.ids.class_name.text = className
+
+    for i, method in enumerate(methods):
+        makeMethodCell(region, startingIndex + i, *method)
+    
+    parent.add_widget(region)
+    return startingIndex + len(methods)
 
 class PaddingCell(AnchorLayout):
     padding_horizontal = NumericProperty(5)
@@ -106,7 +121,14 @@ class ExpandingStack(StackLayout):
         Clock.schedule_once(self.ExpandingStack_setup)
 
 class MethodCell(ExpandingStack):
+    index = -1
     fieldInputs = ListProperty(list())
+
+    def run(self, *args):
+        if self.index < 0:
+            return
+        run_string = self.index.ToString()
+        print("run", run_string)
 
 class ClassDisplay(ExpandingStack):
     collapsed = BooleanProperty(False)
@@ -145,6 +167,13 @@ class ClassDisplay(ExpandingStack):
 
 class MainWidget(FloatLayout):
     connected = False
+    currentMessage = ""
+    currentString = ""
+    lastRanCell = None
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        Clock.schedule_interval(self.check_message, 0.5)
 
     def connect(self):
         if self.connected:
@@ -155,9 +184,54 @@ class MainWidget(FloatLayout):
             self.connected = start_client(self.ids.ip_input.text, self.receive_message)
             if self.connected:
                 self.ids.connect_button.text = "Disconnect"
-    
+
     def receive_message(self, message):
-        print(message, end="")
+        self.currentString += message
+        idx = self.currentString.find("\n"*5)
+        if idx >= 0:
+            self.currentMessage = self.currentString[:idx]
+            self.currentString = self.currentString[idx + 5:]
+
+    # checks for message periodically on main thread
+    def check_message(self, *args):
+        if self.connected and self.currentMessage:
+            self.process_message(self.currentMessage)
+            self.currentMessage = ""
+
+    def process_message(self, message):
+        idx = message.find("\n"*4)
+        if idx >= 0:
+            command = message[:idx]
+            message = message[idx + 4:]
+            if command == "result":
+                self.process_result(message)
+                return
+            if command == "class_info":
+                self.process_class_info(message)
+                return
+        print("Could not process message")
+    
+    def process_result(self, message):
+        pass
+
+    def process_class_info(self, message):
+        try:
+            index = 0
+            obj_pointer, *class_list = message.split("\n"*4)
+            for class_string in class_list:
+                type_name, *method_list = class_string.split("\n"*3)
+                print("Processing class", type_name)
+                methods = list()
+                for method_string in method_list:
+                    is_field, type_strings, name_strings = method_string.split("\n"*2)
+                    is_field = bool(int(is_field))
+                    method_type, *param_types = type_strings.split("\n")
+                    method_name, *param_names = name_strings.split("\n")
+                    methods.append([method_type, method_name, param_types, param_names])
+                index = makeClassRegion(self.ids.methods, index, type_name, methods)
+        except ValueError:
+            print("Could not parse class_info")
+            return
 
 class GUIApp(App):
     def build(self):

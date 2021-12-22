@@ -50,7 +50,7 @@ void Manager::RunMethod(int methodIdx, std::vector<std::string> args) {
                 std::string resultString = std::to_string(*(std::uintptr_t*)(&res));
                 sendResult(resultString, il2cpp_functions::class_get_name(classofinst(object)));
             } else
-                LOG_INFO("Run failed");
+                LOG_INFO("Run returned nothing"); // either a failure or a field set
         });
     }
 }
@@ -71,14 +71,14 @@ void Manager::listenOnEvents(Channel& client, const Message& message) {
     // LOG_INFO("Received: %s", msgStr.c_str());
 
     // gamer delimiters
-    auto idx = msgStr.find("\n\n\n\n\n");
+    currentMessage << msgStr;
+    std::string currentStr = currentMessage.str();
+    auto idx = currentStr.find("\n\n\n\n\n");
     if(idx != std::string::npos) {
         // split up message if delimiter is found
-        currentMessage << msgStr.substr(0, idx);
-        processMessage(currentMessage.str());
-        // clear current message stringstream
-        currentMessage.str(std::string());
-        currentMessage << msgStr.substr(idx + 6);
+        processMessage(currentStr.substr(0, idx));
+        // replace current message stringstream with the latter of the message
+        currentMessage.str(currentStr.substr(idx + 5));
     }
 }
 
@@ -129,6 +129,7 @@ void Manager::sendResult(std::string value, std::string classTypeName) {
     if(!connected) return;
 
     std::stringstream ss;
+    ss << "result\n\n\n\n";
     ss << sanitizeString(classTypeName);
     ss << "\n\n\n\n\n";
     ss << sanitizeString(value);
@@ -143,6 +144,7 @@ void Manager::setAndSendObject(Il2CppObject* obj) {
     methods.clear();
 
     std::stringstream ss;
+    ss << "class_info\n\n\n\n";
     // convert pointer to string
     ss << sanitizeString(std::to_string(*(std::uintptr_t*)(&object)));
     ss << "\n\n\n\n";
@@ -210,6 +212,7 @@ void Manager::setAndSendObject(Il2CppObject* obj) {
         }
         parent = getParent(parent);
     }
+    ss << "\n\n\n\n\n";
 
     // send info
     client->queueWrite(Message(ss.str()));
