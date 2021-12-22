@@ -12,3 +12,4 @@ Client/share
 Client/Scripts
 Client/Lib
 Client/Include
+Client/__pycache__

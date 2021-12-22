@@ -4,8 +4,8 @@
 
 class Method {
     public:
-    Il2CppTypeEnum returnType;
-    std::vector<Il2CppTypeEnum> paramTypes;
+    Il2CppType* returnType;
+    std::vector<Il2CppType*> paramTypes;
     bool retNonSimple = false;
     bool hasNonSimpleParam = false;
 
@@ -23,3 +23,6 @@ class Method {
 
     std::string infoString();
 };
+
+std::string typeName(Il2CppType* type);
+bool isSimpleType(Il2CppTypeEnum type);
