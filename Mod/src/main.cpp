@@ -2,6 +2,7 @@
 #include "objectdump.hpp"
 #include "classutils.hpp"
 #include "manager.hpp"
+#include "threadscheduler.hpp"
 
 #include "beatsaber-hook/shared/utils/il2cpp-utils.hpp"
 #include "beatsaber-hook/shared/utils/utils.h"
@@ -24,6 +25,7 @@
 #include <filesystem>
 
 using namespace GlobalNamespace;
+using namespace RUE;
 
 static ModInfo modInfo;
 DEFINE_CONFIG(ModConfig);
@@ -57,9 +59,17 @@ MAKE_HOOK_MATCH(ControllerLateUpdate, &VRUIControls::VRPointer::LateUpdate, void
 MAKE_HOOK_MATCH(MenuActivate, &MainMenuViewController::DidActivate,
         void, MainMenuViewController* self, bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling) {
     MenuActivate(self, firstActivation, addedToHierarchy, screenSystemEnabling);
-    if(firstActivation && !Manager::Instance) {
+    if(!Manager::Instance) {
         Manager::Instance = new Manager();
         Manager::Instance->Init();
+    }
+    if(!ThreadScheduler::InstanceObject) {
+        static auto literal = il2cpp_utils::newcsstr<il2cpp_utils::CreationType::Manual>("InspectElementThreadScheduler");
+        ThreadScheduler::InstanceObject = UnityEngine::GameObject::New_ctor(literal);
+        UnityEngine::Object::DontDestroyOnLoad(ThreadScheduler::InstanceObject);
+    }
+    if(!ThreadScheduler::Instance) {
+        ThreadScheduler::Instance = ThreadScheduler::InstanceObject->AddComponent<ThreadScheduler*>();
     }
 }
 

@@ -4,6 +4,9 @@
 
 #include "questui/shared/CustomTypes/Components/MainThreadScheduler.hpp"
 
+#define MESSAGE_LOGGING
+#define TYPE_LOGGING
+
 using namespace SocketLib;
 using namespace ClassUtils;
 
@@ -39,7 +42,7 @@ void Manager::SetObject(Il2CppObject* obj) {
 void Manager::RunMethod(int methodIdx, std::vector<std::string> args) {
     if(methodIdx < methods.size() && methodIdx >= 0) {
         QuestUI::MainThreadScheduler::Schedule([this, args, methodIdx](){
-            LOG_INFO("Running method");
+            LOG_INFO("Running method in main thread");
             std::string out = "";
             auto res = methods[methodIdx].run(args, &out);
             // check if we had a non pointer type output
@@ -48,10 +51,15 @@ void Manager::RunMethod(int methodIdx, std::vector<std::string> args) {
             } else if(res) {
                 // convert pointer to string
                 std::string resultString = std::to_string(*(std::uintptr_t*)(&res));
-                sendResult(resultString, il2cpp_functions::class_get_name(classofinst(object)));
-            } else
+                sendResult(resultString, il2cpp_functions::class_get_name(classofinst(res)));
+            } else {
                 LOG_INFO("Run returned nothing"); // either a failure or a field set
+                sendResult("");
+            }
         });
+    } else {
+        LOG_INFO("Invalid run index");
+        sendResult("");
     }
 }
 
@@ -62,23 +70,43 @@ void Manager::connectEvent(Channel& channel, bool connected) {
 
     if(!connected)
         client = nullptr;
-    // else
-    //     client->queueWrite(Message("Successfully connected\n"));
 }
 
+std::vector<std::string> parse(std::string& str, std::string delimiter);
+std::string sanitizeString(std::string messagePart);
 void Manager::listenOnEvents(Channel& client, const Message& message) {
     auto msgStr = message.toString();
-    // LOG_INFO("Received: %s", msgStr.c_str());
+    #ifdef MESSAGE_LOGGING
+    LOG_INFO("Received: %s", sanitizeString(msgStr).c_str());
+    #endif
 
     // gamer delimiters
     currentMessage << msgStr;
     std::string currentStr = currentMessage.str();
-    auto idx = currentStr.find("\n\n\n\n\n");
-    if(idx != std::string::npos) {
-        // split up message if delimiter is found
-        processMessage(currentStr.substr(0, idx));
+    auto strs = parse(currentStr, "\n\n\n\n\n");
+    // avoid overwriting stream without a full message present
+    if(strs.size() > 1) {
         // replace current message stringstream with the latter of the message
-        currentMessage.str(currentStr.substr(idx + 5));
+        currentMessage.str(strs[strs.size() - 1]);
+        strs.erase(strs.end() - 1);
+        // process each message found
+        for(auto& str : strs) {
+            processMessage(str);
+        }
+    }
+}
+
+void Manager::sendMessage(std::string message) {
+    if(!connected) return;
+    
+    client->queueWrite(Message(message));
+    // sending a message should mean it is finished processing
+    // so send the next queued one if there is
+    processingMessage = false;
+    if(queuedMessages.size() > 0) {
+        LOG_INFO("Processing queued message");
+        client->queueWrite(Message("echo" + queuedMessages[0] + "\n\n\n\n\n"));
+        queuedMessages.erase(queuedMessages.begin());
     }
 }
 
@@ -87,7 +115,7 @@ std::string sanitizeString(std::string messagePart) {
     std::stringstream ss;
     for(auto& chr : messagePart)
         if(chr == '\n')
-            ss << "{newline}";
+            ss << "\\n";
         else
             ss << chr;
     std::string res = ss.str();
@@ -131,14 +159,18 @@ void Manager::sendResult(std::string value, std::string classTypeName) {
     std::stringstream ss;
     ss << "result\n\n\n\n";
     ss << sanitizeString(classTypeName);
-    ss << "\n\n\n\n\n";
+    ss << "\n\n\n\n";
     ss << sanitizeString(value);
-    ss << "\n\n\n\n\n\n";
-    client->queueWrite(Message(ss.str()));
+    ss << "\n\n\n\n\n";
+    #ifdef MESSAGE_LOGGING
+    LOG_INFO("Sending: %s", sanitizeString(ss.str()).c_str());
+    #endif
+    sendMessage(ss.str());
 }
 
 void Manager::setAndSendObject(Il2CppObject* obj) {
     if(!connected) return;
+    if(!obj) return;
 
     object = obj;
     methods.clear();
@@ -150,7 +182,7 @@ void Manager::setAndSendObject(Il2CppObject* obj) {
     ss << "\n\n\n\n";
     
     auto klass = classofinst(object);
-    ss << sanitizeString(il2cpp_functions::class_get_name(klass));
+    ss << sanitizeString(il2cpp_functions::type_get_name(il2cpp_functions::class_get_type(klass)));
 
     auto fieldInfos = getFields(klass);
     // turn each field into fake get/set methods
@@ -165,9 +197,9 @@ void Manager::setAndSendObject(Il2CppObject* obj) {
         auto fakeMethodSet = Method(object, fieldInfo, true);
         if(!fakeMethodSet.hasNonSimpleParam) {
             methods.emplace_back(fakeMethodSet);
+            ss << "\n\n\n";
+            ss << methodMessage(fakeMethodSet);
         }
-        ss << "\n\n\n";
-        ss << methodMessage(fakeMethodSet);
     }
 
     auto methodInfos = getMethods(klass);
@@ -185,7 +217,7 @@ void Manager::setAndSendObject(Il2CppObject* obj) {
     auto parent = getParent(klass);
     while(parent) {
         ss << "\n\n\n\n";
-        ss << sanitizeString(il2cpp_functions::class_get_name(parent));
+        ss << sanitizeString(il2cpp_functions::type_get_name(il2cpp_functions::class_get_type(parent)));
 
         auto fieldInfos = getFields(parent);
         for(auto& fieldInfo : fieldInfos) {
@@ -197,25 +229,28 @@ void Manager::setAndSendObject(Il2CppObject* obj) {
             auto fakeMethodSet = Method(object, fieldInfo, true);
             if(!fakeMethodSet.hasNonSimpleParam) {
                 methods.emplace_back(fakeMethodSet);
+                ss << "\n\n\n";
+                ss << methodMessage(fakeMethodSet);
             }
-            ss << "\n\n\n";
-            ss << methodMessage(fakeMethodSet);
         }
         auto methodInfos = getMethods(parent);
         for(auto& methodInfo : methodInfos) {
             auto method = Method(object, methodInfo);
             if(!method.hasNonSimpleParam) {
                 methods.emplace_back(method);
+                ss << "\n\n\n";
+                ss << methodMessage(method);
             }
-            ss << "\n\n\n";
-            ss << methodMessage(method);
         }
         parent = getParent(parent);
     }
     ss << "\n\n\n\n\n";
 
+    #ifdef MESSAGE_LOGGING
+    LOG_INFO("Sending: %s", sanitizeString(ss.str()).c_str());
+    #endif
     // send info
-    client->queueWrite(Message(ss.str()));
+    sendMessage(ss.str());
     LOG_INFO("Object set");
 }
 #pragma endregion
@@ -235,26 +270,38 @@ std::vector<std::string> parse(std::string& str, std::string delimiter) {
 }
 
 void Manager::processMessage(std::string message) {
+    // only allow one message to be processed at a time
+    if(processingMessage) {
+        #ifdef MESSAGE_LOGGING
+        LOG_INFO("Adding message to queue: %s", sanitizeString(message).c_str());
+        #endif
+        queuedMessages.emplace_back(message);
+        return;
+    }
+    processingMessage = true;
+    #ifdef MESSAGE_LOGGING
+    LOG_INFO("Processing: %s", sanitizeString(message).c_str());
+    #endif
     // find command type
     auto idx = message.find("\n\n\n\n");
     if(idx != std::string::npos) {
         std::string command = message.substr(0, idx);
         if(awaitingMessage) {
             // dispatch truncated message to set callback
-            nextMessageCallback(message.substr(idx + 5));
+            nextMessageCallback(message.substr(idx + 4));
             return;
         }
         // otherwise, find based on command name
         if(command == "run") {
-            processRun(message.substr(idx + 5));
+            processRun(message.substr(idx + 4));
             return;
         }
         if(command == "run_raw") {
-            processRunRaw(message.substr(idx + 5));
+            processRunRaw(message.substr(idx + 4));
             return;
         }
         if(command == "load") {
-            processLoad(message.substr(idx + 5));
+            processLoad(message.substr(idx + 4));
             return;
         }
     }
@@ -262,6 +309,9 @@ void Manager::processMessage(std::string message) {
 }
 
 void Manager::processRun(std::string command) {
+    #ifdef MESSAGE_LOGGING
+    LOG_INFO("Run: %s", sanitizeString(command).c_str());
+    #endif
     int index;
     std::vector<std::string> args;
     try {
@@ -288,10 +338,17 @@ void Manager::processRun(std::string command) {
         return;
     }
     if(!awaitingMessage)
+        #ifdef MESSAGE_LOGGING
+        LOG_INFO("Run: Index %i, Num args: %lu", index, args.size()); // gets logged
+        #endif
         RunMethod(index, args);
+    // else: handle constructor arguments
 }
 
 void Manager::processRunRaw(std::string command) {
+    #ifdef MESSAGE_LOGGING
+    LOG_INFO("RunRaw: %s", sanitizeString(command).c_str());
+    #endif
     Il2CppObject* target;
     Il2CppClass* klass;
     std::vector<std::string> baseArgs;
@@ -320,13 +377,18 @@ void Manager::processRunRaw(std::string command) {
         return;
     }
     // could do type checking, but this doesn't allow user input anyway
+    #ifdef MESSAGE_LOGGING
     LOG_INFO("RunRaw: Object %p, MethodName %s, ArgNum %i", target, methodName.c_str(), argNum);
+    #endif
     auto info = const_cast<MethodInfo*>(il2cpp_functions::class_get_method_from_name(klass, methodName.c_str(), argNum));
     methods.emplace_back(Method(target, info));
     RunMethod(methods.size() - 1, args);
 }
 
 void Manager::processLoad(std::string command) {
+    #ifdef MESSAGE_LOGGING
+    LOG_INFO("Load: %s", sanitizeString(command).c_str());
+    #endif
     try {
         std::uintptr_t ptr_int = (std::uintptr_t)std::stol(command);
         if(ptr_int < 10)
@@ -335,6 +397,9 @@ void Manager::processLoad(std::string command) {
         // this is why I don't allow user input for this
         // I don't know how to check that this pointer isn't garbage
         // maybe if I'm lucky catch(...) can prevent crashes
+        #ifdef MESSAGE_LOGGING
+        LOG_INFO("Load: %p", ptr);
+        #endif
         SetObject(ptr);
     } catch(...) {
         LOG_INFO("Could not parse load argument as a pointer");

@@ -8,6 +8,9 @@ def receive_loop(receive_callback):
         except OSError:
             break
 
+def send_message(message):
+    client.send(message.encode())
+
 running = False
 
 def start_client(ip, receive_callback):

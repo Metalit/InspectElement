@@ -15,25 +15,47 @@
     size_hint_min_y: self.padding_vertical * 2
 
 <CompactLabel>:
-    size: self.texture_size[0] + 10, self.texture_size[1] + 5
-    color: 0, 0, 0
+    label: label
+    width: self.label.texture_size[0] + self.padding_horizontal * 2
+    height: self.label.texture_size[1] + self.padding_vertical * 2
+    Label:
+        id: label
+        text: self.parent.text
+        color: 0, 0, 0
 
-<FieldInput>:
+<CompactButton>:
+    width: self.texture_size[0] + 20
+
+<CompactInput>:
+    text_input: text_input
+    text: self.text_input.text
     width: 100
+    TextInput:
+        id: text_input
 
 <MethodCell>:
-    height: 30
+    height: 35
+    size_hint_y: None
     orientation: "lr-tb"
-    Button:
-        id: run_button
+    on_width: if self.parent: self.parent.width = max(self.width, self.parent.width)
+    PaddingCell:
+        padding_vertical: 2.5
         width: 50
-        text: "Run"
+        Button:
+            id: run_button
+            text: "Run"
+
+<HistoryCell>:
+    height: 30
+    size_hint_y: None
 
 <ClassDisplay>:
     orientation: "tb-lr"
     content: content_area
+    size_hint_x: None
+    on_width: if self.parent: self.parent.width = max(self.width + 10, self.parent.width)
     # class name and dropdown button
-    ExpandingStack:
+    ExpandingStackH:
         orientation: "lr-tb"
         height: 40
         PaddingCell:
@@ -45,9 +67,11 @@
             id: class_name
             text: "Class name - ex. GameObject"
     # content area
-    ExpandingStack:
+    ExpandingStackV:
         id: content_area
         orientation: "tb-lr"
+        size_hint_x: None
+        on_width: if self.parent: self.parent.width = max(self.width, self.parent.width)
 
 <MainWidget>:
     # background
@@ -82,62 +106,40 @@
                     on_press: root.connect()
         # method area
         ScrollView:
-            ExpandingStack:
+            ExpandingStackV:
                 id: methods
-                orientation: "tb-lr"
-                ClassDisplay:
-                    MethodCell:
-                        CompactLabel:
-                            text: "return type"
-                        CompactLabel:
-                            text: "method name"
-                        CompactLabel:
-                            text: "s"
-                        FieldInput:
-                            text: "s"
-                    MethodCell:
-                        CompactLabel:
-                            text: "return type"
-                        CompactLabel:
-                            text: "method name"
-                        CompactLabel:
-                            text: "s"
-                        FieldInput:
-                            text: "s"
-                    MethodCell:
-                        CompactLabel:
-                            text: "return type"
-                        CompactLabel:
-                            text: "method name"
-                        CompactLabel:
-                            text: "s"
-                        FieldInput:
-                            text: "s"
-                ClassDisplay:
-                    MethodCell:
-                        CompactLabel:
-                            text: "return type"
-                        CompactLabel:
-                            text: "method name"
-                        CompactLabel:
-                            text: "s"
-                        FieldInput:
-                            text: "s"
-                    MethodCell:
-                        CompactLabel:
-                            text: "return type"
-                        CompactLabel:
-                            text: "method name"
-                        CompactLabel:
-                            text: "s"
-                        FieldInput:
-                            text: "s"
-                    MethodCell:
-                        CompactLabel:
-                            text: "return type"
-                        CompactLabel:
-                            text: "method name"
-                        CompactLabel:
-                            text: "s"
-                        FieldInput:
-                            text: "s"
+                size_hint: None, None
+    # right side info
+    BoxLayout:
+        orientation: "vertical"
+        size_hint_x: 0.2
+        pos_hint: {"right": 1}
+        # history panel
+        PaddingCell:
+            padding_horizontal: 10
+            padding_vertical: 10
+            ScrollView:
+                ExpandingStackV:
+                    id: history
+                    canvas:
+                        Color:
+                            rgb: 0.6, 0.6, 0.6
+                        Rectangle:
+                            pos: self.pos
+                            size: self.size
+                    BoxLayout:
+                        height: 30
+                        orientation: "horizontal"
+                        Label:
+                            text: "History"
+                            size_hint_x: None
+                            width: self.parent.width - 30
+                        CompactButton:
+                            text: "X"
+                            size_hint_x: None
+                            width: 30
+                            on_press: root.clear_history()
+        # game object navigation
+        ScrollView:
+            ExpandingStackV:
+                id: game_object_nav

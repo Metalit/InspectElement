@@ -7,6 +7,7 @@ class Manager {
     private:
     void connectEvent(SocketLib::Channel& channel, bool connected);
     void listenOnEvents(SocketLib::Channel& client, const SocketLib::Message& message);
+    void sendMessage(std::string message);
 
     void processMessage(std::string message);
     void processRun(std::string command);
@@ -15,6 +16,9 @@ class Manager {
 
     bool awaitingMessage = false;
     std::function<void(std::string)> nextMessageCallback;
+
+    bool processingMessage = false;
+    std::vector<std::string> queuedMessages;
 
     void sendResult(std::string value, std::string classTypeName = "");
     // separating seems difficult
