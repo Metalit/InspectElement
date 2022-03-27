@@ -1,15 +1,61 @@
-Mod/Inspect Element.qmod
-Mod/log_processed.txt
-Mod/log.txt
-Mod/Android.mk.backup
-Mod/extern
-Mod/libs
-Mod/ndkpath.txt
-Mod/obj
-Mod/qpm.shared.json
 Client/pyvenv.cfg
 Client/share
 Client/Scripts
 Client/Lib
 Client/Include
 Client/__pycache__
+
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# VSCode config stuff
+!.vscode/c_cpp_properties.json
+!.vscode/tasks.json
+
+# NDK stuff
+Mod/out/
+Mod/[Ll]ib/
+Mod/[Ll]ibs/
+Mod/[Oo]bj/
+Mod/[Oo]bjs/
+Mod/ndkpath.txt
+*.zip
+*.cmake
+
+Mod/extern/
+
+Mod/build/
+
+Mod/qpm.shared.json
+
+*.qmod

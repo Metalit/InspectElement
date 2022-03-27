@@ -2,33 +2,15 @@
 #include "objectdump.hpp"
 #include "classutils.hpp"
 #include "manager.hpp"
-#include "threadscheduler.hpp"
 
 #include "beatsaber-hook/shared/utils/il2cpp-utils.hpp"
 #include "beatsaber-hook/shared/utils/utils.h"
+#include "beatsaber-hook/shared/config/config-utils.hpp"
 #include "beatsaber-hook/shared/utils/hooking.hpp"
-
-#include "questui/shared/QuestUI.hpp"
-#include "config-utils/shared/config-utils.hpp"
-#include "custom-types/shared/register.hpp"
-
-#include "VRUIControls/VRPointer.hpp"
-#include "GlobalNamespace/OVRInput_Button.hpp"
-
-#include "UnityEngine/EventSystems/PointerEventData.hpp"
-#include "UnityEngine/EventSystems/RaycastResult.hpp"
-
-#include "UnityEngine/GameObject.hpp"
-
-#include "GlobalNamespace/MainMenuViewController.hpp"
 
 #include <filesystem>
 
-using namespace GlobalNamespace;
-using namespace RUE;
-
 static ModInfo modInfo;
-DEFINE_CONFIG(ModConfig);
 
 Logger& getLogger() {
     static Logger* logger = new Logger(modInfo);
@@ -40,37 +22,40 @@ std::string GetDataPath() {
     return s;
 }
 
-// Hooks
-MAKE_HOOK_MATCH(ControllerLateUpdate, &VRUIControls::VRPointer::LateUpdate, void, VRUIControls::VRPointer* self) {
-    ControllerLateUpdate(self);
-    // ensure manager exists
-    if(!Manager::Instance) return;
-    // check for button
-    bool lbut = OVRInput::GetDown(getModConfig().Button.GetValue(), OVRInput::Controller::LTouch);
-    bool rbut = OVRInput::GetDown(getModConfig().Button.GetValue(), OVRInput::Controller::RTouch);
-    bool isRight = self->_get__lastControllerUsedWasRight();
-    if((lbut && !isRight) || (rbut && isRight)) {
-        // should include ui
-        auto hoveredObject = self->pointerData->pointerCurrentRaycast.get_gameObject();
-        Manager::Instance->SetObject(hoveredObject);
-    }
+static int numFunctions = 0;
+static std::vector<std::function<void()>> scheduledFunctions{};
+static std::mutex scheduleLock;
+
+void scheduleFunction(std::function<void()> func) {
+    std::lock_guard<std::mutex> lock(scheduleLock);
+    scheduledFunctions.emplace_back(func);
+    numFunctions++;
 }
 
-MAKE_HOOK_MATCH(MenuActivate, &MainMenuViewController::DidActivate,
-        void, MainMenuViewController* self, bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling) {
-    MenuActivate(self, firstActivation, addedToHierarchy, screenSystemEnabling);
+// Hooks
+MAKE_HOOK_FIND_CLASS_INSTANCE(Initialize, "", "OVRManager", "Initialize", void, Il2CppObject* self) {
+    Initialize(self);
     if(!Manager::Instance) {
+        LOG_INFO("Initializing connection manager");
         Manager::Instance = new Manager();
         Manager::Instance->Init();
     }
-    if(!ThreadScheduler::InstanceObject) {
-        static auto literal = il2cpp_utils::newcsstr<il2cpp_utils::CreationType::Manual>("InspectElementThreadScheduler");
-        ThreadScheduler::InstanceObject = UnityEngine::GameObject::New_ctor(literal);
-        UnityEngine::Object::DontDestroyOnLoad(ThreadScheduler::InstanceObject);
+}
+
+MAKE_HOOK_FIND_CLASS_INSTANCE(Update, "", "OVRManager", "Update", void, Il2CppObject* self) {
+    Update(self);
+    if(numFunctions > 0) {
+        std::lock_guard<std::mutex> lock(scheduleLock);
+        numFunctions = 0;
+        for(auto& function : scheduledFunctions)
+            function();
+        scheduledFunctions.clear();
     }
-    if(!ThreadScheduler::Instance) {
-        ThreadScheduler::Instance = ThreadScheduler::InstanceObject->AddComponent<ThreadScheduler*>();
-    }
+}
+
+MAKE_HOOK_FIND_CLASS_INSTANCE(MainMenu, "", "MainMenuViewController", "DidActivate", void, Il2CppObject* self, bool a1, bool a2, bool a3) {
+    MainMenu(self, a1, a2, a3);
+    logHierarchy(GetDataPath() + "mainmenu.txt");
 }
 
 extern "C" void setup(ModInfo& info) {
@@ -82,20 +67,16 @@ extern "C" void setup(ModInfo& info) {
     if(!direxists(dataPath))
         mkpath(dataPath);
 	
-    getLogger().info("Completed setup!");
+    LOG_INFO("Completed setup!");
 }
 
 extern "C" void load() {
-    getLogger().info("Installing hooks...");
+    LOG_INFO("Installing hooks...");
     il2cpp_functions::Init();
 
-    getModConfig().Init(modInfo);
-    QuestUI::Init();
-    QuestUI::Register::RegisterModSettingsViewController(modInfo, DidActivate);
-
-    LoggerContextObject logger = getLogger().WithContext("load");
+    auto logger = getLogger().WithContext("load");
     // Install hooks
-    INSTALL_HOOK(logger, ControllerLateUpdate);
-    INSTALL_HOOK(logger, MenuActivate);
+    INSTALL_HOOK(logger, Initialize);
+    INSTALL_HOOK(logger, Update);
     getLogger().info("Installed all hooks!");
 }

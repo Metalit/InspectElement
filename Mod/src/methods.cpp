@@ -130,7 +130,7 @@ std::string toString(Il2CppTypeEnum type, void* res) {
             ss << std::fixed << std::setprecision(10) << CAST_RES(double);
             return ss.str();
         case IL2CPP_TYPE_STRING:
-            return STR((Il2CppString*)res);
+            return StringW(res);
         case IL2CPP_TYPE_I:
         case IL2CPP_TYPE_U:
         case IL2CPP_TYPE_PTR:
@@ -201,7 +201,7 @@ Il2CppObject* Method::run(std::vector<std::string> args, std::string* valueRes) 
         }
         // run the method
         Il2CppException* ex = nullptr;
-        auto ret = il2cpp_functions::runtime_invoke(method, object, params, &ex);
+        auto ret = il2cpp_functions::runtime_invoke(method, object, (void**) params, &ex);
         // free params
         for(auto& param : params) {
             free(param);

@@ -2,10 +2,7 @@
 #include "classutils.hpp"
 #include "main.hpp"
 
-#include "questui/shared/CustomTypes/Components/MainThreadScheduler.hpp"
-
 #define MESSAGE_LOGGING
-#define TYPE_LOGGING
 
 using namespace SocketLib;
 using namespace ClassUtils;
@@ -41,8 +38,7 @@ void Manager::SetObject(Il2CppObject* obj) {
 
 void Manager::RunMethod(int methodIdx, std::vector<std::string> args) {
     if(methodIdx < methods.size() && methodIdx >= 0) {
-        QuestUI::MainThreadScheduler::Schedule([this, args, methodIdx](){
-            LOG_INFO("Running method in main thread");
+        scheduleFunction([this, args, methodIdx](){
             std::string out = "";
             auto res = methods[methodIdx].run(args, &out);
             // check if we had a non pointer type output
@@ -77,7 +73,7 @@ std::string sanitizeString(std::string messagePart);
 void Manager::listenOnEvents(Channel& client, const Message& message) {
     auto msgStr = message.toString();
     #ifdef MESSAGE_LOGGING
-    LOG_INFO("Received: %s", sanitizeString(msgStr).c_str());
+    LOG_INFO("Received: %s", sanitizeString(msgStr.data()).c_str());
     #endif
 
     // gamer delimiters
@@ -179,50 +175,19 @@ void Manager::setAndSendObject(Il2CppObject* obj) {
     ss << "class_info\n\n\n\n";
     // convert pointer to string
     ss << sanitizeString(std::to_string(*(std::uintptr_t*)(&object)));
-    ss << "\n\n\n\n";
-    
     auto klass = classofinst(object);
-    ss << sanitizeString(il2cpp_functions::type_get_name(il2cpp_functions::class_get_type(klass)));
-
-    auto fieldInfos = getFields(klass);
-    // turn each field into fake get/set methods
-    for(auto& fieldInfo : fieldInfos) {
-        // gets should always be fine, type-wise
-        auto fakeMethodGet = Method(object, fieldInfo, false);
-        methods.emplace_back(fakeMethodGet);
-        // doesn't need a first check, since the "first" is the class name
-        ss << "\n\n\n";
-        ss << methodMessage(fakeMethodGet);
-
-        auto fakeMethodSet = Method(object, fieldInfo, true);
-        if(!fakeMethodSet.hasNonSimpleParam) {
-            methods.emplace_back(fakeMethodSet);
-            ss << "\n\n\n";
-            ss << methodMessage(fakeMethodSet);
-        }
-    }
-
-    auto methodInfos = getMethods(klass);
-    // convert to our method type
-    for(auto& methodInfo : methodInfos) {
-        // would rather emplace the whole object, but then it might have to be removed
-        auto method = Method(object, methodInfo);
-        if(!method.hasNonSimpleParam) {
-            methods.emplace_back(method);
-            ss << "\n\n\n";
-            ss << methodMessage(method);
-        }
-    }
-
-    auto parent = getParent(klass);
-    while(parent) {
+    
+    do {
         ss << "\n\n\n\n";
-        ss << sanitizeString(il2cpp_functions::type_get_name(il2cpp_functions::class_get_type(parent)));
+        ss << sanitizeString(il2cpp_functions::type_get_name(il2cpp_functions::class_get_type(klass)));
 
-        auto fieldInfos = getFields(parent);
+        auto fieldInfos = GetFields(klass);
+        // turn each field into fake get/set methods
         for(auto& fieldInfo : fieldInfos) {
+            // gets should always be fine, type-wise
             auto fakeMethodGet = Method(object, fieldInfo, false);
             methods.emplace_back(fakeMethodGet);
+            // doesn't need a first check, since the "first" is the class name
             ss << "\n\n\n";
             ss << methodMessage(fakeMethodGet);
 
@@ -233,8 +198,11 @@ void Manager::setAndSendObject(Il2CppObject* obj) {
                 ss << methodMessage(fakeMethodSet);
             }
         }
-        auto methodInfos = getMethods(parent);
+
+        auto methodInfos = GetMethods(klass);
+        // convert to our method type
         for(auto& methodInfo : methodInfos) {
+            // would rather emplace the whole object, but then it might have to be removed
             auto method = Method(object, methodInfo);
             if(!method.hasNonSimpleParam) {
                 methods.emplace_back(method);
@@ -242,8 +210,10 @@ void Manager::setAndSendObject(Il2CppObject* obj) {
                 ss << methodMessage(method);
             }
         }
-        parent = getParent(parent);
-    }
+
+        klass = GetParent(klass);
+    } while(klass);
+    
     ss << "\n\n\n\n\n";
 
     #ifdef MESSAGE_LOGGING

@@ -1,0 +1,80 @@
+if valuetype has ctor with only simple params, allow construction
+
+allow sequences of methods, with name and arg num - not from user input though
+
+allow set object with pointer instead of method return
+methods return value types or raw pointer values and don't set object
+
+keep list of prev objects and allow backtracking
+
+allow pointer for classes (?) - also not from user input
+
+display:
+returnType methodName (paramType paramName [input] ...) runButton = [result]
+
+if type has get_transform: have get parent shortcut (method sequence) and list of children
+
+if type has get_Item: show list of items
+
+
+class_from_type
+class_get_method_from_name
+type_get_name
+class_get_name
+
+Message formats:
+
+// all empty strings or values will be replaced with single spaces
+
+run:
+4.
+int index // -1 for args for constructor
+4.
+list of args: 4.
+bool construct // waits for next message for constructor args
+3.
+string value
+5.
+
+
+run_raw: // only gives args for class_get_method_from_name
+4.
+pointer obj
+4.
+string name
+4.
+int argNum
+4.
+list of args 4.
+bool construct // waits for next message for constructor args
+3.
+string value
+5.
+
+
+load:
+4.
+pointer val
+5.
+
+
+result:
+string class_name // also serves as class signifier
+4.
+string val
+5.
+
+
+class_info:
+pointer obj
+4.
+list of class subdivisions: 4.
+string type_name
+3.
+list of methods: 3.
+bool is_field
+2.
+list of type strings 1.
+2.
+list of name strings 1.
+5.

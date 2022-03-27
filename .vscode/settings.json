@@ -1,6 +1,12 @@
 {
+    "cmake.sourceDirectory": "${workspaceFolder}/Mod",
     "files.associations": {
-        "memory": "cpp",
-        "vector": "cpp"
+        "fstream": "cpp",
+        "iosfwd": "cpp",
+        "ostream": "cpp",
+        "cstdio": "cpp",
+        "istream": "cpp",
+        "__locale": "cpp",
+        "__mutex_base": "cpp"
     }
 }

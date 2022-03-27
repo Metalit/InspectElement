@@ -1,4 +1,9 @@
-$NDKPath = Get-Content ./ndkpath.txt
+if (Test-Path "./ndkpath.txt")
+{
+    $NDKPath = Get-Content ./ndkpath.txt
+} else {
+    $NDKPath = $ENV:ANDROID_NDK_HOME
+}
 
 $stackScript = "$NDKPath/ndk-stack"
 if (-not ($PSVersionTable.PSEdition -eq "Core")) {
@@ -6,7 +11,7 @@ if (-not ($PSVersionTable.PSEdition -eq "Core")) {
 }
 
 if ($args.Count -eq 0) {
-    Get-Content ./log.txt | & $stackScript -sym ./obj/local/arm64-v8a/ > log_processed.txt
+    Get-Content ./log.log | & $stackScript -sym ./build/debug/ > log_processed.log
 } else {
-    Get-Content $args[0] | & $stackScript -sym ./obj/local/arm64-v8a/ > "$($args[0])_processed.txt"
+    Get-Content $args[0] | & $stackScript -sym ./build/debug/ > "$($args[0])_processed.log"
 }

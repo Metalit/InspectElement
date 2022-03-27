@@ -5,7 +5,7 @@ using namespace ClassUtils;
 using namespace il2cpp_utils;
 
 // field_get_value, field_set_value
-std::vector<FieldInfo*> ClassUtils::getFields(Il2CppClass* klass) {
+std::vector<FieldInfo*> ClassUtils::GetFields(Il2CppClass* klass) {
     std::vector<FieldInfo*> ret;
     // only a single pointer since fields are stored as values
     FieldInfo* iter = nullptr; // needs to be explicitly set to nullptr
@@ -17,7 +17,7 @@ std::vector<FieldInfo*> ClassUtils::getFields(Il2CppClass* klass) {
 }
 
 // I think all the property methods are gotten by getMethods
-std::vector<MethodInfo*> ClassUtils::getPropMethods(PropertyInfo* prop) {
+std::vector<MethodInfo*> ClassUtils::GetPropMethods(PropertyInfo* prop) {
     std::vector<MethodInfo*> ret{};
     // should actually make everything else const, but I'm lazy
     if(auto m = il2cpp_functions::property_get_get_method(prop))
@@ -27,7 +27,7 @@ std::vector<MethodInfo*> ClassUtils::getPropMethods(PropertyInfo* prop) {
     return ret;
 }
 
-std::vector<PropertyInfo*> ClassUtils::getProperties(Il2CppClass* klass) {
+std::vector<PropertyInfo*> ClassUtils::GetProperties(Il2CppClass* klass) {
     std::vector<PropertyInfo*> ret;
     // only a single pointer since properties are stored as values
     PropertyInfo* iter = nullptr;
@@ -38,7 +38,7 @@ std::vector<PropertyInfo*> ClassUtils::getProperties(Il2CppClass* klass) {
     return ret;
 }
 
-std::vector<MethodInfo*> ClassUtils::getMethods(Il2CppClass* klass) {
+std::vector<MethodInfo*> ClassUtils::GetMethods(Il2CppClass* klass) {
     std::vector<MethodInfo*> ret;
     // double pointer because methods are stored as pointers
     MethodInfo** iter = nullptr;
@@ -49,7 +49,7 @@ std::vector<MethodInfo*> ClassUtils::getMethods(Il2CppClass* klass) {
     return ret;
 }
 
-std::vector<Il2CppClass*> ClassUtils::getInterfaces(Il2CppClass* klass) {
+std::vector<Il2CppClass*> ClassUtils::GetInterfaces(Il2CppClass* klass) {
     std::vector<Il2CppClass*> ret;
     // double pointer because classes are stored as pointers
     Il2CppClass** iter = nullptr;
@@ -60,6 +60,6 @@ std::vector<Il2CppClass*> ClassUtils::getInterfaces(Il2CppClass* klass) {
     return ret;
 }
 
-Il2CppClass* ClassUtils::getParent(Il2CppClass* klass) {
+Il2CppClass* ClassUtils::GetParent(Il2CppClass* klass) {
     return il2cpp_functions::class_get_parent(klass);
 }
