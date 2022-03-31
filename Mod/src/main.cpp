@@ -33,29 +33,22 @@ void scheduleFunction(std::function<void()> func) {
 }
 
 // Hooks
-MAKE_HOOK_FIND_CLASS_INSTANCE(Initialize, "", "OVRManager", "Initialize", void, Il2CppObject* self) {
-    Initialize(self);
-    if(!Manager::Instance) {
-        LOG_INFO("Initializing connection manager");
-        Manager::Instance = new Manager();
-        Manager::Instance->Init();
-    }
+MAKE_HOOK_FIND_CLASS_INSTANCE(MainMenu, "", "MainMenuViewController", "DidActivate", void, Il2CppObject* self, bool a1, bool a2, bool a3) {
+    MainMenu(self, a1, a2, a3);
+    // logHierarchy(GetDataPath() + "mainmenu.txt");
 }
 
-MAKE_HOOK_FIND_CLASS_INSTANCE(Update, "", "OVRManager", "Update", void, Il2CppObject* self) {
+MAKE_HOOK_FIND_CLASS_INSTANCE(Update, "", "HMMainThreadDispatcher", "Update", void, Il2CppObject* self) {
     Update(self);
     if(numFunctions > 0) {
         std::lock_guard<std::mutex> lock(scheduleLock);
         numFunctions = 0;
-        for(auto& function : scheduledFunctions)
+        for(auto& function : scheduledFunctions) {
+            LOG_INFO("Running scheduled function on main thread");
             function();
+        }
         scheduledFunctions.clear();
     }
-}
-
-MAKE_HOOK_FIND_CLASS_INSTANCE(MainMenu, "", "MainMenuViewController", "DidActivate", void, Il2CppObject* self, bool a1, bool a2, bool a3) {
-    MainMenu(self, a1, a2, a3);
-    logHierarchy(GetDataPath() + "mainmenu.txt");
 }
 
 extern "C" void setup(ModInfo& info) {
@@ -73,10 +66,14 @@ extern "C" void setup(ModInfo& info) {
 extern "C" void load() {
     LOG_INFO("Installing hooks...");
     il2cpp_functions::Init();
+    
+    LOG_INFO("Initializing connection manager");
+    Manager::Instance = new Manager();
+    Manager::Instance->Init();
 
     auto logger = getLogger().WithContext("load");
     // Install hooks
-    INSTALL_HOOK(logger, Initialize);
     INSTALL_HOOK(logger, Update);
+    // INSTALL_HOOK(logger, MainMenu);
     getLogger().info("Installed all hooks!");
 }

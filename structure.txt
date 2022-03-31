@@ -58,6 +58,17 @@ pointer val
 5.
 
 
+find:
+4.
+bool searchByObjectName // searches all game objects, or specific class if provided
+4.
+string search
+4.
+string namespace
+4.
+string class
+
+
 result:
 string class_name // also serves as class signifier
 4.

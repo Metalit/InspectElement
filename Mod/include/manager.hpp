@@ -13,6 +13,7 @@ class Manager {
     void processRun(std::string command);
     void processRunRaw(std::string command);
     void processLoad(std::string command);
+    void processFind(std::string command);
 
     bool awaitingMessage = false;
     std::function<void(std::string)> nextMessageCallback;

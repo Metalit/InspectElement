@@ -104,6 +104,35 @@
                     id: connect_button
                     text: "Connect"
                     on_press: root.connect()
+        # find menu
+        BoxLayout:
+            orientation: "horizontal"
+            size_hint_y: None
+            height: 50
+            PaddingCell:
+                padding_vertical: 10
+                TextInput:
+                    id: namespace_find
+                    text: ""
+                    hint_text: "Namespace"
+            PaddingCell:
+                padding_vertical: 10
+                TextInput:
+                    id: class_find
+                    text: ""
+                    hint_text: "Class Name"
+            PaddingCell:
+                padding_vertical: 10
+                TextInput:
+                    id: name_find
+                    text: ""
+                    hint_text: "Object Name"
+            PaddingCell:
+                padding_vertical: 9
+                Button:
+                    id: find_button
+                    text: "Search"
+                    on_press: root.find()
         # method area
         ScrollView:
             ExpandingStackV:

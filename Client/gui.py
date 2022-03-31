@@ -368,6 +368,21 @@ class MainWidget(FloatLayout):
         self.awaiting_cells.append(cell)
         send_message(message_string)
     
+    def find(self):
+        if not self.connected: return
+
+        message_string = "find" + "\n"*4
+        message_string += "1" if self.ids.name_find.text else "0"
+        message_string += "\n"*4
+        message_string += sanitize_string(self.ids.name_find.text)
+        message_string += "\n"*4
+        message_string += sanitize_string(self.ids.namespace_find.text)
+        message_string += "\n"*4
+        message_string += sanitize_string(self.ids.class_find.text)
+        message_string += "\n"*5
+
+        send_message(message_string)
+    
     def load_history(self, cell):
         if not self.history_cells.count(cell):
             self.ids.history.remove_widget(cell)

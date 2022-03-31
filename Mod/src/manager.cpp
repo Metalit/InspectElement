@@ -274,6 +274,10 @@ void Manager::processMessage(std::string message) {
             processLoad(message.substr(idx + 4));
             return;
         }
+        if(command == "find") {
+            processFind(message.substr(idx + 4));
+            return;
+        }
     }
     LOG_INFO("Message does not match a command.");
 }
@@ -307,11 +311,12 @@ void Manager::processRun(std::string command) {
         awaitingMessage = false;
         return;
     }
-    if(!awaitingMessage)
+    if(!awaitingMessage) {
         #ifdef MESSAGE_LOGGING
         LOG_INFO("Run: Index %i, Num args: %lu", index, args.size()); // gets logged
         #endif
         RunMethod(index, args);
+    }
     // else: handle constructor arguments
 }
 
@@ -373,6 +378,68 @@ void Manager::processLoad(std::string command) {
         SetObject(ptr);
     } catch(...) {
         LOG_INFO("Could not parse load argument as a pointer");
+    }
+}
+
+void Manager::processFind(std::string command) {
+    #ifdef MESSAGE_LOGGING
+    LOG_INFO("Find: %s", sanitizeString(command).c_str());
+    #endif
+    try {
+        // get args
+        auto args = parse(command, "\n\n\n\n");
+        bool nameSearch = std::stoi(args[0]);
+        std::string name = args[1];
+        std::string namespaceName = args[2];
+        std::string className = args[3];
+        // find class if provided
+        Il2CppClass* klass = nullptr;
+        static auto objClass = il2cpp_utils::GetClassFromName("UnityEngine", "Object");
+        // account for global/unnamed namespace
+        if(namespaceName == " " || namespaceName == "Global" || namespaceName == "GlobalNamespace")
+            namespaceName = "";
+        if(className != " ") {
+            klass = il2cpp_utils::GetClassFromName(namespaceName, className);
+            if(!klass) {
+                LOG_INFO("Could not find class %s.%s", namespaceName.c_str(), className.c_str());
+            }
+            // ensure class is a subclass of UnityEngine.Object
+            if(klass && !il2cpp_functions::class_is_subclass_of(klass, objClass, false)) {
+                LOG_INFO("Class must be a subclass of Object to search");
+                return;
+            }
+        }
+        if(!klass)
+            klass = objClass;
+        // get all objects of its class
+        static auto findAllMethod = il2cpp_utils::FindMethodUnsafe("UnityEngine", "Resources", "FindObjectsOfTypeAll", 1);
+        auto objects = unwrap_optionals(il2cpp_utils::RunMethod<ArrayW<Il2CppObject*>, false>(nullptr, findAllMethod, il2cpp_utils::GetSystemType(klass)));
+        // do search or return first object
+        if(nameSearch && name != " ") {
+            LOG_INFO("name");
+            auto nameMethod = il2cpp_functions::class_get_method_from_name(klass, "get_name", 0);
+            if(!nameMethod) {
+                LOG_INFO("Class must have a get_name() method to search by name");
+                return;
+            }
+            auto obj = objects.FirstOrDefault([&name, &nameMethod](auto x) {
+                return unwrap_optionals(il2cpp_utils::RunMethod<StringW, false>(x, nameMethod)) == name;
+            });
+            if(!obj) {
+                LOG_INFO("Could not find object with name '%s'", name.c_str());
+                return;
+            }
+            SetObject(obj);
+            return;
+        } else {
+            if(objects.Length() > 0)
+                SetObject(objects[0]);
+            else
+                LOG_INFO("No objects found");
+            return;
+        }
+    } catch(...) {
+        LOG_INFO("Could not parse find command");
     }
 }
 #pragma endregion
