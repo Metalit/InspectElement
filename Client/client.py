@@ -1,6 +1,7 @@
 import socket
 import threading
 
+
 def receive_loop(receive_callback):
     while True:
         try:
@@ -8,10 +9,15 @@ def receive_loop(receive_callback):
         except OSError:
             break
 
-def send_message(message):
-    client.send(message.encode())
+
+def send_message(message: str):
+    encoded_message = message.encode("utf-8")
+    client.send(len(encoded_message))
+    client.send(encoded_message)
+
 
 running = False
+
 
 def start_client(ip, receive_callback):
     # accessible in stop
@@ -20,7 +26,7 @@ def start_client(ip, receive_callback):
     try:
         idx = ip.find(":")
         trunc_ip = ip[:idx]
-        port = int(ip[idx+1:])
+        port = int(ip[idx + 1:])
         client.connect((trunc_ip, port))
     except:
         print("Could not connect with ip", ip)
@@ -32,6 +38,7 @@ def start_client(ip, receive_callback):
     thread.start()
 
     return True
+
 
 def stop_client():
     if running:

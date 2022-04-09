@@ -36,6 +36,7 @@ void Manager::SetObject(Il2CppObject* obj) {
     setAndSendObject(obj);
 }
 
+// TODO: Use span instead of vector
 void Manager::RunMethod(int methodIdx, std::vector<std::string> args) {
     if(methodIdx < methods.size() && methodIdx >= 0) {
         scheduleFunction([this, args, methodIdx](){
@@ -61,53 +62,83 @@ void Manager::RunMethod(int methodIdx, std::vector<std::string> args) {
 
 void Manager::connectEvent(Channel& channel, bool connected) {
     LOG_INFO("Connected %i status: %s", channel.clientDescriptor, connected ? "connected" : "disconnected");
-    this->connected = connected;
-    client = &channel;
 
     if(!connected)
-        client = nullptr;
+        channelIncomingQueue.erase(&channel);
+    else
+        channelIncomingQueue.try_emplace(&channel, 0);
 }
 
-std::vector<std::string> parse(std::string& str, std::string delimiter);
-std::string sanitizeString(std::string messagePart);
+std::vector<std::string> parse(std::string& str, std::string_view delimiter);
+std::string sanitizeString(std::string_view const messagePart);
 void Manager::listenOnEvents(Channel& client, const Message& message) {
-    auto msgStr = message.toString();
+    std::span<byte> receivedBytes = message;
+    auto& pendingPacket = channelIncomingQueue.at(&client);
+
+    // start of a new packet
+    if (!pendingPacket.isValid()) {
+        // get the first 8 bytes, then cast to size_t
+        size_t expectedLength = *receivedBytes.first(sizeof(size_t)).data();
+
+        pendingPacket = {expectedLength};
+
+        auto subspanData = receivedBytes.subspan(sizeof(size_t));
+        pendingPacket.data << subspanData.data();
+        pendingPacket.currentLength += subspanData.size();
+    // continue appending to existing packet
+    } else {
+        pendingPacket.data << receivedBytes.data();
+        pendingPacket.currentLength += receivedBytes.size();
+    }
+
+    if (pendingPacket.currentLength < pendingPacket.expectedLength) {
+        return;
+    }
+
+    auto stream = std::move(pendingPacket.data); // avoid copying
+    pendingPacket = IncomingPacket(); // reset
+
+    auto finalMessage = stream.str();
     #ifdef MESSAGE_LOGGING
-    LOG_INFO("Received: %s", sanitizeString(msgStr.data()).c_str());
+    LOG_INFO("Received: %s", sanitizeString(finalMessage.data()).c_str());
     #endif
 
-    // gamer delimiters
-    currentMessage << msgStr;
-    std::string currentStr = currentMessage.str();
-    auto strs = parse(currentStr, "\n\n\n\n\n");
-    // avoid overwriting stream without a full message present
-    if(strs.size() > 1) {
-        // replace current message stringstream with the latter of the message
-        currentMessage.str(strs[strs.size() - 1]);
-        strs.erase(strs.end() - 1);
-        // process each message found
-        for(auto& str : strs) {
-            processMessage(str);
-        }
-    }
+    processMessage(finalMessage);
 }
 
-void Manager::sendMessage(std::string message) {
-    if(!connected) return;
-    
-    client->queueWrite(Message(message));
-    // sending a message should mean it is finished processing
-    // so send the next queued one if there is
-    processingMessage = false;
-    if(queuedMessages.size() > 0) {
-        LOG_INFO("Processing queued message");
-        client->queueWrite(Message("echo" + queuedMessages[0] + "\n\n\n\n\n"));
-        queuedMessages.erase(queuedMessages.begin());
+void Manager::sendMessage(std::string_view s) {
+    sendMessage(std::span<byte>((byte*) s.data(), s.size()));
+}
+
+void Manager::sendMessage(std::span<byte> const message) {
+
+    for (auto& [_, client] : serverSocket->getClients()) {
+        std::vector<byte> messageStream(message.size() + sizeof(size_t));
+        // prepend size, then send data
+        messageStream.front() = message.size();
+
+        // so sad we have to copy :(
+        // maybe just queue write twice?
+        std::copy(message.begin(), message.end(), messageStream.begin() + sizeof(size_t));
+
+        client->queueWrite(Message(messageStream));
     }
+//
+//    if(!connected) return;
+//
+//    client->queueWrite(Message(message));
+//    // sending a message should mean it is finished processing
+//    // so send the next queued one if there is
+//    processingMessage = false;
+//    if(!queuedMessages.empty()) {
+//        LOG_INFO("Processing queued message");
+//        client->queueWrite(Message("echo" + queuedMessages[0] + "\n\n\n\n\n"));
+//        queuedMessages.erase(queuedMessages.begin());
+//    }
 }
 
 #pragma region sending
-std::string sanitizeString(std::string messagePart) {
+std::string sanitizeString(std::string_view const messagePart) {
     std::stringstream ss;
     for(auto& chr : messagePart)
         if(chr == '\n')
@@ -149,9 +180,7 @@ std::string methodMessage(Method& method) {
     return ss.str();
 }
 
-void Manager::sendResult(std::string value, std::string classTypeName) {
-    if(!connected) return;
-
+void Manager::sendResult(std::string_view value, std::string_view classTypeName) {
     std::stringstream ss;
     ss << "result\n\n\n\n";
     ss << sanitizeString(classTypeName);
@@ -165,7 +194,7 @@ void Manager::sendResult(std::string value, std::string classTypeName) {
 }
 
 void Manager::setAndSendObject(Il2CppObject* obj) {
-    if(!connected) return;
+    if (serverSocket->getClients().empty()) return;
     if(!obj) return;
 
     object = obj;
@@ -226,7 +255,7 @@ void Manager::setAndSendObject(Il2CppObject* obj) {
 #pragma endregion
 
 #pragma region parsing
-std::vector<std::string> parse(std::string& str, std::string delimiter) {
+std::vector<std::string> parse(std::string& str, std::string_view delimiter) {
     std::vector<std::string> ret = {};
     int start = 0;
     auto end = str.find(delimiter);
@@ -239,7 +268,7 @@ std::vector<std::string> parse(std::string& str, std::string delimiter) {
     return ret;
 }
 
-void Manager::processMessage(std::string message) {
+void Manager::processMessage(std::string const message) {
     // only allow one message to be processed at a time
     if(processingMessage) {
         #ifdef MESSAGE_LOGGING
@@ -300,7 +329,7 @@ void Manager::processRun(std::string command) {
                 // alright because empty strings are not allowed in messages
                 args.emplace_back("");
                 awaitingMessage = true;
-                nextMessageCallback = [this](std::string str){ processRun(str); };
+                nextMessageCallback = [this](std::string_view str){ processRun(std::string(str)); };
             } else
                 args.emplace_back(arg[1]);
         }
@@ -360,12 +389,12 @@ void Manager::processRunRaw(std::string command) {
     RunMethod(methods.size() - 1, args);
 }
 
-void Manager::processLoad(std::string command) {
+void Manager::processLoad(std::string_view const command) {
     #ifdef MESSAGE_LOGGING
     LOG_INFO("Load: %s", sanitizeString(command).c_str());
     #endif
     try {
-        std::uintptr_t ptr_int = (std::uintptr_t)std::stol(command);
+        std::uintptr_t ptr_int = (std::uintptr_t)std::stol(command.data());
         if(ptr_int < 10)
             throw; // nullptr would probably cause a crash regardless of catch
         Il2CppObject* ptr = *(reinterpret_cast<Il2CppObject**>(&ptr_int));
