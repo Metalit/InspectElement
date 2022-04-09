@@ -28,7 +28,7 @@ static std::mutex scheduleLock;
 
 void scheduleFunction(std::function<void()> func) {
     std::lock_guard<std::mutex> lock(scheduleLock);
-    scheduledFunctions.emplace_back(func);
+    scheduledFunctions.emplace_back(std::move(func));
     numFunctions++;
 }
 
