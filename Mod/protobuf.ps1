@@ -1,0 +1,1 @@
+& "$ENV:VCPKG_ROOT\installed\arm64-android\tools\protobuf\protoc.exe" -I ./include/protobuf --cpp_out=./include/protobuf ./include/protobuf/qrue.proto
