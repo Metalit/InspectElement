@@ -1,18 +1,22 @@
 #pragma once
 
-#include "beatsaber-hook/shared/utils/il2cpp-utils.hpp"
+#include "main.hpp"
 
 namespace ClassUtils {
-    std::vector<const FieldInfo*> GetFields(const Il2CppClass* klass);
+    std::vector<FieldInfo*> GetFields(Il2CppClass* klass);
 
-    std::vector<const MethodInfo*> GetPropMethods(const PropertyInfo* prop);
-    std::vector<const PropertyInfo*> GetProperties(const Il2CppClass* klass);
+    std::vector<const MethodInfo*> GetPropMethods(PropertyInfo* prop);
+    std::vector<PropertyInfo*> GetProperties(Il2CppClass* klass);
 
-    std::vector<const MethodInfo*> GetMethods(const Il2CppClass* klass);
+    std::vector<MethodInfo*> GetMethods(Il2CppClass* klass);
 
-    std::vector<const Il2CppClass*> GetInterfaces(const Il2CppClass* klass);
+    std::vector<Il2CppClass*> GetInterfaces(Il2CppClass* klass);
 
-    const Il2CppClass* GetParent(const Il2CppClass* klass);
+    Il2CppClass* GetParent(Il2CppClass* klass);
+
+    TypeInfoMsg GetTypeInfo(const Il2CppType* type);
+    ClassInfoMsg GetClassInfo(const Il2CppType* classType);
+    StructInfoMsg GetStructInfo(const Il2CppType* structType);
 }
 
 #define classofinst(instance) il2cpp_functions::object_get_class(instance)

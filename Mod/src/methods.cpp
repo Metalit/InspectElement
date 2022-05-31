@@ -1,13 +1,12 @@
 #include "methods.hpp"
+#include "classutils.hpp"
 
 #include <sstream>
 #include <iomanip>
 
-#define typeIsValuetype(type) il2cpp_functions::class_from_il2cpp_type(returnType)->valuetype
-
 #define CASE(il2cpptypename, ret) case IL2CPP_TYPE_##il2cpptypename: return ret;
 #define BASIC_CASE(il2cpptypename) CASE(il2cpptypename, #il2cpptypename)
-std::string typeName(Il2CppType* type) {
+std::string typeName(const Il2CppType* type) {
     auto typeEnum = type->type;
     switch (typeEnum) {
         BASIC_CASE(END)
@@ -93,16 +92,18 @@ size_t fieldTypeSize(const Il2CppType* type) {
             // return;
         case IL2CPP_TYPE_VALUETYPE:
             // their comment: /* note that 't' and 'type->type' can be different */
-            if (type->type == IL2CPP_TYPE_VALUETYPE && Type::IsEnum(type)) {
-                t = Class::GetEnumBaseType(Type::GetClass(type))->type;
+            if (type->type == IL2CPP_TYPE_VALUETYPE && il2cpp_functions::class_from_il2cpp_type(type)->enumtype) {
+                t = il2cpp_functions::class_from_il2cpp_type(type)->element_class->byval_arg.type;
                 goto handle_enum;
             } else {
                 auto klass = il2cpp_functions::class_from_il2cpp_type(type);
                 return il2cpp_functions::class_instance_size(klass) - sizeof(Il2CppObject);
             }
         case IL2CPP_TYPE_GENERICINST:
-            t = GenericClass::GetTypeDefinition(type->data.generic_class)->byval_arg.type;
-            goto handle_enum;
+            LOG_INFO("Error: tried to find size of generic instance, not implemented yet");
+            return 8;
+            // t = GenericClass::GetTypeDefinition(type->data.generic_class)->byval_arg.type;
+            // goto handle_enum;
         default:
             LOG_INFO("Error: unknown type size");
             return 8;
@@ -139,7 +140,7 @@ Method::Method(Il2CppObject* obj, FieldInfo* f, bool s) {
 // alternatively can send single pointers to everything with derefReferences set to false
 // in which case the handling of value / reference types needs to be done before the call
 // so int*, Vector3*, Il2CppObject*
-RetWrapper Method::Run(void** args, std::string& error, bool derefReferences) {
+RetWrapper Method::Run(void** args, std::string& error, bool derefReferences) const {
     if(method) {
         LOG_INFO("Running method %s", name.c_str());
 
@@ -152,7 +153,7 @@ RetWrapper Method::Run(void** args, std::string& error, bool derefReferences) {
         }
         
         Il2CppException* ex = nullptr;
-        auto ret = il2cpp_functions::runtime_invoke(method, object, params, &ex);
+        auto ret = il2cpp_functions::runtime_invoke(method, object, args, &ex);
         
         if(ex) {
             LOG_INFO("%s: Failed with exception: %s", name.c_str(), il2cpp_utils::ExceptionToString(ex).c_str());
@@ -195,4 +196,38 @@ RetWrapper Method::Run(void** args, std::string& error, bool derefReferences) {
         }
     }
     return nullptr;
+}
+
+TypeInfoMsg Method::ReturnTypeInfo() const {
+    return ClassUtils::GetTypeInfo(returnType);
+}
+
+FieldInfoMsg Method::GetFieldInfo(uint64_t id) const {
+    FieldInfoMsg info;
+    info.set_name(name);
+    info.set_id(id);
+    *info.mutable_type() = ReturnTypeInfo();
+    return info;
+}
+
+PropertyInfoMsg Method::GetPropertyInfo(uint64_t id, bool get, bool set) const {
+    PropertyInfoMsg info;
+    info.set_name(name);
+    info.set_hasget(get);
+    info.set_getid(id);
+    info.set_hasset(set);
+    info.set_setid(get ? id + 1 : id);
+    *info.mutable_type() = ReturnTypeInfo();
+    return info;
+}
+
+MethodInfoMsg Method::GetMethodInfo(uint64_t id) const {
+    MethodInfoMsg info;
+    info.set_name(name);
+    info.set_id(id);
+    for(int i = 0; i < paramNames.size(); i++) {
+        info.mutable_args()->insert({paramNames[i], ClassUtils::GetTypeInfo(paramTypes[i])});
+    }
+    *info.mutable_returntype() = ReturnTypeInfo();
+    return info;
 }

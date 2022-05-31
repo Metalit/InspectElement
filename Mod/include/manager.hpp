@@ -3,8 +3,6 @@
 #include "methods.hpp"
 #include "socket_lib/shared/SocketHandler.hpp"
 
-#include "protobuf/qrue.pb.h"
-
 struct ByteBuilder {
     private:
     std::byte* buffer = nullptr;
@@ -26,7 +24,7 @@ struct ByteBuilder {
         progress = 0;
         size = N;
     }
-    void AddBytes(byte* bytes, int length = -1) {
+    void AddBytes(const void* bytes, int length = -1) {
         if(length > size - progress || length < 0)
             length = size - progress;
         memcpy(buffer + progress, bytes, length);
@@ -57,7 +55,7 @@ class Manager {
     void connectEvent(SocketLib::Channel& channel, bool connected);
     void listenOnEvents(SocketLib::Channel& client, const SocketLib::Message& message);
 
-    void processBytes(std::span<byte> bytes);
+    void processBytes(std::span<const SocketLib::byte> bytes);
 
     void processMessage(const PacketWrapper& packet);
     void invokeMethod(const InvokeMethod& packet);
@@ -84,7 +82,6 @@ class Manager {
     public:
     void Init();
     void SetObject(class Il2CppObject* object);
-    void RunMethod(int methodIdx, std::vector<std::string> args);
 
     static Manager* Instance;
 };

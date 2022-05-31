@@ -5,6 +5,10 @@
 #include "beatsaber-hook/shared/utils/typedefs.h"
 #include "beatsaber-hook/shared/utils/typedefs-string.hpp"
 
+#include "protobuf/qrue.pb.h"
+
+#define typeIsValuetype(type) il2cpp_functions::class_from_il2cpp_type(type)->valuetype
+
 Logger& getLogger();
 
 #define LOG_INFO(...) getLogger().info(__VA_ARGS__)

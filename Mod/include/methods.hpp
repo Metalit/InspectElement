@@ -2,23 +2,22 @@
 
 #include "main.hpp"
 
-#include "protobuf/qrue.pb.h"
-
 struct RetWrapper {
     private:
     void* val = nullptr;
     size_t valSize = sizeof(void*);
 
     public:
+    RetWrapper() = default;
     RetWrapper(void* value, size_t size = sizeof(void*))
         : val(value), valSize(size) {}
     ~RetWrapper() { if(val) free(val); }
 
-    RetWrapper(const BoxWrapper&) = delete;
-    RetWrapper& operator=(const BoxWrapper&) = delete;
+    RetWrapper(const RetWrapper&) = delete;
+    RetWrapper& operator=(const RetWrapper&) = delete;
 
     bool HasValue() const { return val != nullptr; }
-    std::span<byte> GetAsBytes() const { return {(byte*) val, valSize}; }
+    std::span<std::byte> GetAsBytes() const { return {(std::byte*) val, valSize}; }
     std::string GetAsString() const { return {(char*) val, valSize}; }
 };
 
@@ -38,8 +37,11 @@ class Method {
     public:
     Method(Il2CppObject* obj, MethodInfo* method);
     Method(Il2CppObject* obj, FieldInfo* field, bool set);
-    RetWrapper Run(void** args, std::string& error, bool derefReferences = true);
+    RetWrapper Run(void** args, std::string& error, bool derefReferences = true) const;
 
-    Il2CppClassInfo ReturnClassInfo();
-    Il2Cpp
+    TypeInfoMsg ReturnTypeInfo() const;
+
+    FieldInfoMsg GetFieldInfo(uint64_t id) const;
+    PropertyInfoMsg GetPropertyInfo(uint64_t id, bool get, bool set) const;
+    MethodInfoMsg GetMethodInfo(uint64_t id) const;
 };
