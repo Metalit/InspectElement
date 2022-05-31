@@ -3,17 +3,7 @@
 #include <sstream>
 #include <iomanip>
 
-// TODO: fix consts
-
-void* toPointer(std::uintptr_t value) {
-    return *((void**)(&value));
-}
-
-bool isSimpleType(Il2CppTypeEnum type) {
-    return ((type >= IL2CPP_TYPE_BOOLEAN) && (type <= IL2CPP_TYPE_PTR))
-    || (type == IL2CPP_TYPE_I)
-    || (type == IL2CPP_TYPE_U);
-}
+#define typeIsValuetype(type) il2cpp_functions::class_from_il2cpp_type(returnType)->valuetype
 
 #define CASE(il2cpptypename, ret) case IL2CPP_TYPE_##il2cpptypename: return ret;
 #define BASIC_CASE(il2cpptypename) CASE(il2cpptypename, #il2cpptypename)
@@ -54,105 +44,80 @@ std::string typeName(Il2CppType* type) {
     }
 }
 
-#define ALLOC_RET(type) ret = malloc(sizeof(type)); *((type*)ret)
-#define IF_NOT_EMPTY(type, expr) (arg != " " && arg != "") ? (expr) : (type)(0)
-#define GEN_RET(type, expr) ALLOC_RET(type) = IF_NOT_EMPTY(type, expr); return ret
-#define INT_RET(intType) GEN_RET(intType, (intType)std::stoi(arg))
-void* toMethodArg(Il2CppTypeEnum type, std::string arg) {
-    void* ret = nullptr;
-    switch (type) {
-        case IL2CPP_TYPE_BOOLEAN:
-            std::transform(arg.begin(), arg.end(), arg.begin(), tolower);
-            GEN_RET(bool, arg == "true");
-        case IL2CPP_TYPE_CHAR:
-            GEN_RET(char, arg.c_str()[0]);
-        case IL2CPP_TYPE_I1:
-            // INT_RET(int8_t);
-        case IL2CPP_TYPE_U1:
-            INT_RET(uint8_t);
-        case IL2CPP_TYPE_I2:
-            // INT_RET(int16_t);
-        case IL2CPP_TYPE_U2:
-            INT_RET(uint16_t);
-        case IL2CPP_TYPE_I4:
-            // INT_RET(int32_t);
-        case IL2CPP_TYPE_U4:
-            INT_RET(uint32_t);
-        case IL2CPP_TYPE_I8:
-            // INT_RET(int64_t);
-        case IL2CPP_TYPE_U8:
-            INT_RET(uint64_t);
-        case IL2CPP_TYPE_R4:
-            GEN_RET(float, (float)std::stod(arg));
-        case IL2CPP_TYPE_R8:
-            GEN_RET(double, (double)std::stod(arg));
-        case IL2CPP_TYPE_STRING:
-            return (void*)(il2cpp_utils::newcsstr<il2cpp_utils::CreationType::Manual>(arg));
-        case IL2CPP_TYPE_I:
-        case IL2CPP_TYPE_U:
-        case IL2CPP_TYPE_PTR:
-            GEN_RET(void*, toPointer(std::stol(arg)));
-        default:
-            return nullptr;
+// basically copied from il2cpp (field setting). what could go wrong?
+// (so blame them for the gotos)
+size_t fieldTypeSize(const Il2CppType* type) {
+    int t;
+    if (type->byref) {
+        // never does gc allocation, notably ig
+        return sizeof(void*);
     }
-}
-
-#define CAST_RES(type) *((type*)res)
-#define TO_SSTR(type) ss << CAST_RES(type); return ss.str()
-std::string toString(Il2CppTypeEnum type, void* res) {
-    if(!res) return "nullptr";
-    std::stringstream ss;
-    switch (type) {
+    t = type->type;
+    handle_enum:
+    switch (t) {
         case IL2CPP_TYPE_BOOLEAN:
-            return CAST_RES(bool) ? "true" : "false";
-        case IL2CPP_TYPE_CHAR:
-            TO_SSTR(char);
         case IL2CPP_TYPE_I1:
-            TO_SSTR(int8_t);
         case IL2CPP_TYPE_U1:
-            TO_SSTR(uint8_t);
+            return sizeof(uint8_t);
         case IL2CPP_TYPE_I2:
-            TO_SSTR(int16_t);
         case IL2CPP_TYPE_U2:
-            TO_SSTR(uint16_t);
+            return sizeof(uint16_t);
+        case IL2CPP_TYPE_CHAR:
+            return sizeof(Il2CppChar);
         case IL2CPP_TYPE_I4:
-            TO_SSTR(int32_t);
         case IL2CPP_TYPE_U4:
-            TO_SSTR(uint32_t);
-        case IL2CPP_TYPE_I8:
-            TO_SSTR(int64_t);
-        case IL2CPP_TYPE_U8:
-            TO_SSTR(uint64_t);
-        case IL2CPP_TYPE_R4:
-            ss << std::fixed << std::setprecision(10) << CAST_RES(float);
-            return ss.str();
-        case IL2CPP_TYPE_R8:
-            ss << std::fixed << std::setprecision(10) << CAST_RES(double);
-            return ss.str();
-        case IL2CPP_TYPE_STRING:
-            return StringW(res);
+            return sizeof(int32_t);
         case IL2CPP_TYPE_I:
         case IL2CPP_TYPE_U:
+        case IL2CPP_TYPE_I8:
+        case IL2CPP_TYPE_U8:
+            return sizeof(int64_t);
+        case IL2CPP_TYPE_R4:
+            return sizeof(float);
+        case IL2CPP_TYPE_R8:
+            return sizeof(double);
+        case IL2CPP_TYPE_STRING:
+        case IL2CPP_TYPE_SZARRAY:
+        case IL2CPP_TYPE_CLASS:
+        case IL2CPP_TYPE_OBJECT:
+        case IL2CPP_TYPE_ARRAY:
+            return 8;
+            // aaaaaaahhhhh what do I do with this deref_pointer thing
+            // gc::WriteBarrier::GenericStore(dest, (deref_pointer ? *(void**)value : value));
+            // return;
+        case IL2CPP_TYPE_FNPTR:
         case IL2CPP_TYPE_PTR:
-            TO_SSTR(std::uintptr_t);
+            return 8;
+            // void* *p = (void**)dest;
+            // *p = deref_pointer ? *(void**)value : value;
+            // return;
+        case IL2CPP_TYPE_VALUETYPE:
+            // their comment: /* note that 't' and 'type->type' can be different */
+            if (type->type == IL2CPP_TYPE_VALUETYPE && Type::IsEnum(type)) {
+                t = Class::GetEnumBaseType(Type::GetClass(type))->type;
+                goto handle_enum;
+            } else {
+                auto klass = il2cpp_functions::class_from_il2cpp_type(type);
+                return il2cpp_functions::class_instance_size(klass) - sizeof(Il2CppObject);
+            }
+        case IL2CPP_TYPE_GENERICINST:
+            t = GenericClass::GetTypeDefinition(type->data.generic_class)->byval_arg.type;
+            goto handle_enum;
         default:
-            return "invalid type";
+            LOG_INFO("Error: unknown type size");
+            return 8;
     }
 }
 
 Method::Method(Il2CppObject* obj, MethodInfo* m) {
     object = obj;
     method = m;
-    for(decltype(method->parameters_count) i = 0; i < method->parameters_count; i++) {
+    for(int i = 0; i < method->parameters_count; i++) {
         auto param = method->parameters[i];
-        paramTypes.emplace_back(const_cast<Il2CppType*>(param.parameter_type));
+        paramTypes.emplace_back(param.parameter_type);
         paramNames.emplace_back(param.name);
-        hasNonSimpleParam = hasNonSimpleParam || !isSimpleType(param.parameter_type->type);
     }
-    // not doing generic methods yet
-    hasNonSimpleParam = hasNonSimpleParam || method->is_generic;
-    returnType = const_cast<Il2CppType*>(method->return_type);
-    retNonSimple = !isSimpleType(returnType->type);
+    returnType = method->return_type;
     name = method->name;
 }
 
@@ -162,126 +127,72 @@ Method::Method(Il2CppObject* obj, FieldInfo* f, bool s) {
     field = f;
     set = s;
     auto type = field->type;
-    paramTypes.emplace_back(const_cast<Il2CppType*>(type));
+    paramTypes.emplace_back(type);
     paramNames.emplace_back(field->name);
-    hasNonSimpleParam = !isSimpleType(type->type) && set;
-    returnType = const_cast<Il2CppType*>(type);//set ? IL2CPP_TYPE_VOID : type;
-    retNonSimple = !isSimpleType(returnType->type);
+    returnType = type;//set ? IL2CPP_TYPE_VOID : type;
     name = field->name;
 }
 
-Il2CppObject* Method::run(std::vector<std::string> args, std::string* valueRes) {
-    // regular method, uses runtime_invoke
+// array of arguments:
+// pointers to whatever data is stored, whether it be value or reference
+// so int*, Vector3*, Il2CppObject**
+// alternatively can send single pointers to everything with derefReferences set to false
+// in which case the handling of value / reference types needs to be done before the call
+// so int*, Vector3*, Il2CppObject*
+RetWrapper Method::Run(void** args, std::string& error, bool derefReferences) {
     if(method) {
         LOG_INFO("Running method %s", name.c_str());
-        // only works for simple methods
-        if(hasNonSimpleParam) return nullptr;
-        // turn each string into a parameter
-        LOG_INFO("Getting parameters");
-        if(args.size() != paramTypes.size()) {
-            LOG_INFO("Method and parameter mismatch");
-            return nullptr;
-        }
 
-        void* params[paramTypes.size()];
-        for(int i = 0; i < paramTypes.size(); i++) {
-            LOG_INFO("Processing parameter of type: %i = %s", paramTypes[i]->type, typeName(paramTypes[i]).c_str());
-            // mallocs all params
-            try {
-                params[i] = toMethodArg(paramTypes[i]->type, args[i]);
-            } catch(...) {
-                // free all set params, including the current one
-                // since toMethodArg mallocs first, then tries to add the data
-                for(int j = 0; j <= i; j++) {
-                    free(params[j]);
-                }
-                LOG_INFO("Could not process arguments");
-                return nullptr;
+        // deref reference types when running a method as it expects direct pointers to them
+        if(derefReferences) {
+            for(int i = 0; i < paramTypes.size(); i++) {
+                if(!typeIsValuetype(paramTypes[i]))
+                    args[i] = *(void**) args[i];
             }
         }
-        // run the method
+        
         Il2CppException* ex = nullptr;
-        auto ret = il2cpp_functions::runtime_invoke(method, object, (void**) params, &ex);
-        // free params
-        for(auto& param : params) {
-            free(param);
-        }
-        // catch exceptions
+        auto ret = il2cpp_functions::runtime_invoke(method, object, params, &ex);
+        
         if(ex) {
             LOG_INFO("%s: Failed with exception: %s", name.c_str(), il2cpp_utils::ExceptionToString(ex).c_str());
-            *valueRes = "Error: " + il2cpp_utils::ExceptionToString(ex); // Error: Failed with exception: lol
-            return nullptr;
+            error = il2cpp_utils::ExceptionToString(ex);
+            return {};
         }
+
         LOG_INFO("Returning");
-        LOG_INFO("Return type: %i = %s", returnType->type, typeName(returnType).c_str());
-        // check if ret is a value type (mostly copied from bs-hook)
-        // il2cpp will return boxed values from methods, but not store them in fields
-        if(!retNonSimple && il2cpp_functions::class_is_valuetype(il2cpp_functions::object_get_class(ret))) {
-            *valueRes = toString(returnType->type, il2cpp_functions::object_unbox(ret));
+        size_t size = fieldTypeSize(returnType);
+        void* ownedRet = malloc(size);
+        // ret is a boxed value type, so a pointer to the data with a bit of metatada or something
+        // so we unbox it to get the raw pointer to the data, and copy that data so it is the value we return
+        if(ret && typeIsValuetype(returnType)) {
+            memcpy(ownedRet, il2cpp_functions::object_unbox(ret), size);
             il2cpp_functions::GC_free(ret);
-            return nullptr;
-        } else if(returnType->type == IL2CPP_TYPE_STRING) {
-            *valueRes = toString(returnType->type, ret);
-            il2cpp_functions::GC_free(ret);
-            return nullptr;
-        }
-        return ret;
-    } else if(field) { // fields :barf:
+        // ret is a pointer to a reference type, so we want to have that pointer as the value we return
+        } else
+            memcpy(ownedRet, &ret, size);
+        return RetWrapper(ownedRet, size);
+    } else if(field) {
         if(set) {
             LOG_INFO("Setting field %s", name.c_str());
             LOG_INFO("Field type: %i = %s", returnType->type, typeName(returnType).c_str());
-            void* param = toMethodArg(paramTypes[0]->type, args[0]);
-            il2cpp_functions::field_set_value(object, field, param);
-            *valueRes = args[0];
-            free(param);
-            return nullptr;
+
+            // deref reference types here as well since it expects the same as if it were running a method
+            if(typeIsValuetype(returnType) || !derefReferences)
+                il2cpp_functions::field_set_value(object, field, *args);
+            else
+                il2cpp_functions::field_set_value(object, field, *(void**) *args);
+            return {};
         } else {
             LOG_INFO("Getting field %s", name.c_str());
             LOG_INFO("Field type: %i = %s", returnType->type, typeName(returnType).c_str());
-            // might want to consider more possible field types, but this works for now
-            if(retNonSimple) {
-                void* result = nullptr;
-                il2cpp_functions::field_get_value(object, field, &result);
-                // temporary solution
-                if(returnType->type == IL2CPP_TYPE_VALUETYPE) {
-                    LOG_INFO("Value type return");
-                    return nullptr;
-                }
-                return (Il2CppObject*)result;
-            } else {
-                void* result = toMethodArg(returnType->type, "");
-                il2cpp_functions::field_get_value(object, field, result);
-                *valueRes = toString(returnType->type, result);
-                free(result);
-                return nullptr;
-            }
+
+            // in the case of either a value type or not, the value we want will be copied to what we return
+            size_t size = fieldTypeSize(returnType);
+            void* ret = malloc(size);
+            il2cpp_functions::field_get_value(object, field, ret);
+            return RetWrapper(ret, size);
         }
     }
     return nullptr;
-}
-
-std::string Method::infoString() {
-    CRASH_UNLESS(paramNames.size() == paramTypes.size());
-    std::stringstream ss;
-    if(method) {
-        ss << "M: " << typeName(returnType) << " " << name << "(";
-        bool first = true;
-        for(int i = 0; i < paramNames.size(); i++) {
-            if(!first)
-                ss << ", ";
-            else
-                first = false;
-            ss << typeName(paramTypes[i]) << " " << paramNames[i];
-        }
-        ss << ")\n";
-        return ss.str();
-    } else if(field) {
-        ss << "F: " << typeName(returnType) << " " << name;
-        if(set)
-            ss << " (set)\n";
-        else
-            ss << " (get)\n";
-        return ss.str();
-    } else
-        return "";
 }

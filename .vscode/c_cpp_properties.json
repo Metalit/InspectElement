@@ -8,10 +8,11 @@
                 "ID=\"qec\""
             ],
             "includePath": [
-                "${workspaceFolder}/**",
-                "${workspaceFolder}/include/**",
-                "${workspaceFolder}/shared/**",
-                "${workspaceFolder}/extern/**"
+                "${workspaceFolder}/Mod/**",
+                "${workspaceFolder}/Mod/include/**",
+                "${workspaceFolder}/Mod/shared/**",
+                "${workspaceFolder}/Mod/extern/**",
+                "${workspaceFolder}/Mod/protobuf/**"
             ],
             "name": "Quest",
             "cStandard": "c11",

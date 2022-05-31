@@ -37,13 +37,14 @@ add_compile_options(-frtti -fexceptions)
 add_compile_options(-O3)
 # compile definitions used
 add_compile_definitions(VERSION=\"${MOD_VERSION}\")
-# add_compile_definitions(ID=\"${MOD_ID}\")
 add_compile_definitions(MOD_ID=\"${MOD_ID}\")
 add_compile_definitions(USE_CODEGEN_FIELDS)
 
 # recursively get all src files
 RECURSE_FILES(cpp_file_list ${SOURCE_DIR}/*.cpp)
 RECURSE_FILES(c_file_list ${SOURCE_DIR}/*.c)
+# get protobuf source files
+RECURSE_FILES(proto_file_list ${CMAKE_CURRENT_SOURCE_DIR}/protobuf/*.cc)
 
 # add all src files to compile
 add_library(
@@ -51,6 +52,7 @@ add_library(
         SHARED
         ${cpp_file_list}
         ${c_file_list}
+        ${proto_file_list}
 )
 
 # vcpkg stuff
@@ -58,8 +60,6 @@ find_package(protobuf CONFIG REQUIRED)
 target_link_libraries(${COMPILE_ID} PRIVATE protobuf::libprotoc protobuf::libprotobuf protobuf::libprotobuf-lite)
 
 target_include_directories(${COMPILE_ID} PRIVATE .)
-
-target_include_directories(${COMPILE_ID} PRIVATE extern/includes/questui_components)
 
 # add src dir as include dir
 target_include_directories(${COMPILE_ID} PRIVATE ${SOURCE_DIR})

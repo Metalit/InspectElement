@@ -1,0 +1,1 @@
+& protoc -I="protobuf" --cpp_out="protobuf" .\protobuf\qrue.proto

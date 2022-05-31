@@ -7,6 +7,11 @@
 using namespace SocketLib;
 using namespace ClassUtils;
 
+template<class T>
+inline T& ReinterpretBytes(const std::string& bytes) {
+    return *(T*) bytes.c_str();
+}
+
 Manager* Manager::Instance = nullptr;
 
 void Manager::Init() {
@@ -38,7 +43,7 @@ void Manager::SetObject(Il2CppObject* obj) {
 
 void Manager::RunMethod(int methodIdx, std::vector<std::string> args) {
     if(methodIdx < methods.size() && methodIdx >= 0) {
-        scheduleFunction([this, args, methodIdx](){
+        scheduleFunction([this, args, methodIdx]() {
             std::string out = "";
             auto res = methods[methodIdx].run(args, &out);
             // check if we had a non pointer type output
@@ -68,57 +73,43 @@ void Manager::connectEvent(Channel& channel, bool connected) {
         client = nullptr;
 }
 
-std::vector<std::string> parse(std::string& str, std::string delimiter);
-std::string sanitizeString(std::string messagePart);
 void Manager::listenOnEvents(Channel& client, const Message& message) {
-    auto msgStr = message.toString();
-    #ifdef MESSAGE_LOGGING
-    LOG_INFO("Received: %s", sanitizeString(msgStr.data()).c_str());
-    #endif
-
-    // gamer delimiters
-    currentMessage << msgStr;
-    std::string currentStr = currentMessage.str();
-    auto strs = parse(currentStr, "\n\n\n\n\n");
-    // avoid overwriting stream without a full message present
-    if(strs.size() > 1) {
-        // replace current message stringstream with the latter of the message
-        currentMessage.str(strs[strs.size() - 1]);
-        strs.erase(strs.end() - 1);
-        // process each message found
-        for(auto& str : strs) {
-            processMessage(str);
-        }
-    }
+    processBytes(message.toSpan());
 }
 
-void Manager::sendMessage(std::string message) {
+void Manager::sendPacket(const PacketWrapper& packet) {
     if(!connected) return;
     
-    client->queueWrite(Message(message));
+    // send size header
+    size_t size = packet.ByteSizeLong();
+    client->queueWrite(Message((byte*) &size, sizeof(size_t)));
+    // send message with that size
+    byte bytes[size];
+    packet.SerializeToArray(bytes, size);
+    client->queueWrite(Message(bytes));
     // sending a message should mean it is finished processing
     // so send the next queued one if there is
-    processingMessage = false;
-    if(queuedMessages.size() > 0) {
-        LOG_INFO("Processing queued message");
-        client->queueWrite(Message("echo" + queuedMessages[0] + "\n\n\n\n\n"));
-        queuedMessages.erase(queuedMessages.begin());
-    }
+    // processingMessage = false;
+    // if(queuedMessages.size() > 0) {
+    //     LOG_INFO("Processing queued message");
+    //     client->queueWrite(Message("echo" + queuedMessages[0] + "\n\n\n\n\n"));
+    //     queuedMessages.erase(queuedMessages.begin());
+    // }
 }
 
 #pragma region sending
-std::string sanitizeString(std::string messagePart) {
-    std::stringstream ss;
-    for(auto& chr : messagePart)
-        if(chr == '\n')
-            ss << "\\n";
-        else
-            ss << chr;
-    std::string res = ss.str();
-    if(res.length() < 1)
-        return " ";
-    return res;
-}
+// std::string sanitizeString(std::string messagePart) {
+//     std::stringstream ss;
+//     for(auto& chr : messagePart)
+//         if(chr == '\n')
+//             ss << "\\n";
+//         else
+//             ss << chr;
+//     std::string res = ss.str();
+//     if(res.length() < 1)
+//         return " ";
+//     return res;
+// }
 
 std::string methodMessage(Method& method) {
     std::stringstream ss;
@@ -164,91 +155,230 @@ void Manager::sendResult(std::string value, std::string classTypeName) {
     sendMessage(ss.str());
 }
 
-void Manager::setAndSendObject(Il2CppObject* obj) {
+void Manager::setAndSendObject(Il2CppObject* obj, uint64_t id) {
     if(!connected) return;
     if(!obj) return;
 
     object = obj;
     methods.clear();
 
-    std::stringstream ss;
-    ss << "class_info\n\n\n\n";
-    // convert pointer to string
-    ss << sanitizeString(std::to_string(*(std::uintptr_t*)(&object)));
+    PacketWrapper packet;
+    LoadObjectResult& result = *packet.mutable_loadobjectresult();
+    result.set_loadid(id);
+    Il2CppTypeDetails* packetObject = result.mutable_object();
+
+    // get class info
+    // set class info
+    // set fields
+    // set properties
+    // set methods
+    // set interfaces
+    // change to parent
+    // repeat while parent
+    
     auto klass = classofinst(object);
-    
+
     do {
-        ss << "\n\n\n\n";
-        ss << sanitizeString(il2cpp_functions::type_get_name(il2cpp_functions::class_get_type(klass)));
+        std::string className(il2cpp_functions::class_get_name(klass));
+        packetObject->clazz()->set_clazz(className);
+        std::string classNamespace(il2cpp_functions::class_get_namespace(klass));
+        packetObject->clazz()->set_namespaze(classNamespace);
 
-        auto fieldInfos = GetFields(klass);
-        // turn each field into fake get/set methods
-        for(auto& fieldInfo : fieldInfos) {
-            // gets should always be fine, type-wise
-            auto fakeMethodGet = Method(object, fieldInfo, false);
-            methods.emplace_back(fakeMethodGet);
-            // doesn't need a first check, since the "first" is the class name
-            ss << "\n\n\n";
-            ss << methodMessage(fakeMethodGet);
+        for(auto& iKlass : ClassUtils::GetInterfaces(klass)) {
+            auto& interfaceClassPacket = *packetObject->add_interfaces();
 
-            auto fakeMethodSet = Method(object, fieldInfo, true);
-            if(!fakeMethodSet.hasNonSimpleParam) {
-                methods.emplace_back(fakeMethodSet);
-                ss << "\n\n\n";
-                ss << methodMessage(fakeMethodSet);
-            }
+            std::string className(il2cpp_functions::class_get_name(iKlass));
+            interfaceClassPacket.set_clazz(className);
+            std::string classNamespace(il2cpp_functions::class_get_namespace(iKlass));
+            interfaceClassPacket.set_namespaze(classNamespace);
         }
 
-        auto methodInfos = GetMethods(klass);
-        // convert to our method type
-        for(auto& methodInfo : methodInfos) {
-            // would rather emplace the whole object, but then it might have to be removed
-            auto method = Method(object, methodInfo);
-            if(!method.hasNonSimpleParam) {
-                methods.emplace_back(method);
-                ss << "\n\n\n";
-                ss << methodMessage(method);
-            }
+        for(auto& field : ClassUtils::GetFields(klass)) {
+            methods.emplace_back(Method(object, fieldInfo, false));
+            auto& fakeMethodGet = methods.back();
+            
+            auto& fieldPacket = *packetObject->add_fields();
+            fieldPacket.set_name(fakeMethodGet.name);
+            fieldPacket.set_id(methods.size() - 1);
+            auto& fieldTypePacket = *fieldPacket.mutable_type();
+            
         }
-
-        klass = GetParent(klass);
-    } while(klass);
+    }
     
-    ss << "\n\n\n\n\n";
+    // do {
+    //     ss << "\n\n\n\n";
+    //     ss << sanitizeString(il2cpp_functions::type_get_name(il2cpp_functions::class_get_type(klass)));
 
-    #ifdef MESSAGE_LOGGING
-    LOG_INFO("Sending: %s", sanitizeString(ss.str()).c_str());
-    #endif
-    // send info
-    sendMessage(ss.str());
-    LOG_INFO("Object set");
+    //     auto fieldInfos = GetFields(klass);
+    //     // turn each field into fake get/set methods
+    //     for(auto& fieldInfo : fieldInfos) {
+    //         // gets should always be fine, type-wise
+    //         auto fakeMethodGet = Method(object, fieldInfo, false);
+    //         methods.emplace_back(fakeMethodGet);
+    //         // doesn't need a first check, since the "first" is the class name
+    //         ss << "\n\n\n";
+    //         ss << methodMessage(fakeMethodGet);
+
+    //         auto fakeMethodSet = Method(object, fieldInfo, true);
+    //         if(!fakeMethodSet.hasNonSimpleParam) {
+    //             methods.emplace_back(fakeMethodSet);
+    //             ss << "\n\n\n";
+    //             ss << methodMessage(fakeMethodSet);
+    //         }
+    //     }
+
+    //     auto methodInfos = GetMethods(klass);
+    //     // convert to our method type
+    //     for(auto& methodInfo : methodInfos) {
+    //         // would rather emplace the whole object, but then it might have to be removed
+    //         auto method = Method(object, methodInfo);
+    //         if(!method.hasNonSimpleParam) {
+    //             methods.emplace_back(method);
+    //             ss << "\n\n\n";
+    //             ss << methodMessage(method);
+    //         }
+    //     }
+
+    //     klass = GetParent(klass);
+    // } while(klass);
+    
+    // ss << "\n\n\n\n\n";
+
+    // #ifdef MESSAGE_LOGGING
+    // LOG_INFO("Sending: %s", sanitizeString(ss.str()).c_str());
+    // #endif
+    // // send info
+    // sendMessage(ss.str());
+    // LOG_INFO("Object set");
 }
 #pragma endregion
 
 #pragma region parsing
-std::vector<std::string> parse(std::string& str, std::string delimiter) {
-    std::vector<std::string> ret = {};
-    int start = 0;
-    auto end = str.find(delimiter);
-    while (end != std::string::npos) {
-        ret.emplace_back(str.substr(start, end - start));
-        start = end + delimiter.size();
-        end = str.find(delimiter, start);
+void Manager::processBytes(std::span<byte> bytes) {
+
+    // if there is header length left:
+    //   if the packet is longer:
+    //     fill the rest of the header
+    //     remove removed bytes from the packet
+    //     set message length left to the header
+    //     set header length left to 0
+    //   else:
+    //     add whole packet to header
+    //     update header length left
+    //     return
+    // if there is message length left:
+    //   if the packet is longer:
+    //     fill the rest of the message
+    //     remove removed bytes from the packet
+    //     set header length left to 4
+    //     process message
+    //     call again with remaining packet
+    //   else:
+    //     add whole packet to message
+    //     update message length left
+    //     return
+
+    auto headerRemaining = header.GetRemaining();
+    if(headerRemaining > 0) {
+        header.AddBytes(bytes.data());
+        if(int* len = header.Resolve<int>()) {
+            bytes = bytes.subspan(headerRemaining);
+            packetBytes.Init(*len);
+        } else
+            return;
     }
-    ret.emplace_back(str.substr(start, end - start));
-    return ret;
+    auto packetRemaining = packetBytes.GetRemaining();
+    if(packetRemaining > 0) {
+        packetBytes.AddBytes(bytes.data());
+        if(byte** pkt = packetBytes.Resolve<byte*>()) {
+            bytes = bytes.subspan(packetRemaining);
+            processMessage(PacketWrapper::ParseFromArray(*pkt, packetBytes.size()));
+            header.Clear();
+            if(!bytes.empty())
+                listenOnEvents(bytes);
+        }
+    }
+}
+
+void Manager::processMessage(const PacketWrapper& packet) {
+    switch(packet.Packet_case()) {
+    case PacketWrapper::kInvokeMethod:
+        invokeMethod(packet.invokemethod());
+    case PacketWrapper::kLoadObject:
+        loadObject(packet.loadobject());
+    case PacketWrapper::kSearchObjects:
+        searchObjects(packet.searchobjects());
+    default:
+        LOG_INFO("Invalid packet type! %i", packet.Packet_case());
+    }
+}
+
+void invokeMethod(const InvokeMethod& packet) {
+    // TODO: type checking?
+    PacketWrapper wrapper;
+    InvokeMethodResult& result = *wrapper.mutable_invokemethodresult();
+    result.set_invokeuuid(packet.invokeuuid());
+    
+    int methodIdx = packet.methodid();
+    result.set_methodid(packet.invokeuuid());
+    if(methodIdx >= methods.size() || methodIdx < 0) {
+        result.set_status(InvokeMethodResult::NOT_FOUND);
+        sendPacket(packet);
+        return;
+    }
+    
+    int argNum = packet.args_size();
+    void* args[argNum];
+    for(int i = 0; i < argNum; i++) {
+        args[i] = packet.mutable_args(i);
+    }
+    
+    scheduleFunction([this, args, methodIdx, wrapper, &result] {
+        std::string err = "";
+        auto res = methods[methodIdx].run(args, err);
+
+        if(!err.empty()) {
+            result.set_status(InvokeMethodResult::ERR);
+            result.set_error(err);
+            sendPacket(packet);
+            return;
+        }
+        result.set_status(InvokeMethodResult::OK);
+        Il2CppData& data = result.result();
+
+        // check if we had a non pointer type output
+        if(out.length() > 0) {
+            sendResult(out);
+        } else if(res) {
+            // convert pointer to string
+            std::string resultString = std::to_string(*(std::uintptr_t*)(&res));
+            sendResult(resultString, il2cpp_functions::class_get_name(classofinst(res)));
+        } else {
+            LOG_INFO("Run returned nothing"); // either a failure or a field set
+            sendResult("");
+        }
+    });
+}
+
+void loadObject(const LoadObject& packet) {
+    auto ptr = ReinterpretBytes<Il2CppObject*>(packet.pointer());
+    setAndSendObject(ptr, packet.loadid());
+}
+
+void searchObjects(const SearchObjects& packet) {
+
 }
 
 void Manager::processMessage(std::string message) {
     // only allow one message to be processed at a time
-    if(processingMessage) {
-        #ifdef MESSAGE_LOGGING
-        LOG_INFO("Adding message to queue: %s", sanitizeString(message).c_str());
-        #endif
-        queuedMessages.emplace_back(message);
-        return;
-    }
-    processingMessage = true;
+    // if(processingMessage) {
+    //     #ifdef MESSAGE_LOGGING
+    //     LOG_INFO("Adding message to queue: %s", sanitizeString(message).c_str());
+    //     #endif
+    //     queuedMessages.emplace_back(message);
+    //     return;
+    // }
+    // processingMessage = true;
     #ifdef MESSAGE_LOGGING
     LOG_INFO("Processing: %s", sanitizeString(message).c_str());
     #endif
@@ -318,46 +448,6 @@ void Manager::processRun(std::string command) {
         RunMethod(index, args);
     }
     // else: handle constructor arguments
-}
-
-void Manager::processRunRaw(std::string command) {
-    #ifdef MESSAGE_LOGGING
-    LOG_INFO("RunRaw: %s", sanitizeString(command).c_str());
-    #endif
-    Il2CppObject* target;
-    Il2CppClass* klass;
-    std::vector<std::string> baseArgs;
-    std::string methodName;
-    int argNum;
-    std::vector<std::string> args;
-    try {
-        // object pointer, method name, argument number, arguments
-        baseArgs = parse(command, "\n\n\n\n");
-        std::uintptr_t ptr_int = (std::uintptr_t)std::stol(baseArgs[0]);
-        if(ptr_int < 10)
-            throw;
-        target = *(reinterpret_cast<Il2CppObject**>(&ptr_int));
-        klass = classofinst(target);
-    } catch(...) {
-        LOG_INFO("Could not parse run_raw argument as a pointer");
-        return;
-    }
-    try {
-        methodName = baseArgs[1];
-        argNum = std::stoi(baseArgs[2]);
-        args.reserve(baseArgs.size() - 3);
-        args.insert(args.end(), baseArgs.begin(), baseArgs.end());
-    } catch(...) {
-        LOG_INFO("Could not process run_raw command");
-        return;
-    }
-    // could do type checking, but this doesn't allow user input anyway
-    #ifdef MESSAGE_LOGGING
-    LOG_INFO("RunRaw: Object %p, MethodName %s, ArgNum %i", target, methodName.c_str(), argNum);
-    #endif
-    auto info = const_cast<MethodInfo*>(il2cpp_functions::class_get_method_from_name(klass, methodName.c_str(), argNum));
-    methods.emplace_back(Method(target, info));
-    RunMethod(methods.size() - 1, args);
 }
 
 void Manager::processLoad(std::string command) {

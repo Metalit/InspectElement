@@ -59,4 +59,7 @@ Mod/build/
 Mod/qpm.shared.json
 Mod/mod.json
 
+Mod/protobuf/*
+!*.proto
+
 *.qmod
